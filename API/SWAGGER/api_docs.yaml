@@ -1,0 +1,274 @@
+swagger: "2.0"
+info:
+  title: "EcomSeller Update Stocks API"
+  description: "API позволяет обновить остатки товара на маркетплесах Озон, ЯндексМаркет и Вайлдберис"
+  version: 1.0.0
+  contact:
+    name: "API support"
+    email: "srolnik@ecomru.ru"
+host: "api.ecomru.ru"
+basePath: "/v1"
+schemes:
+  - http
+  - https
+tags:
+- name: "Авторизация"
+  description: "Здесь можно зарегистрироваться и получить токен"
+- name: "Обновление остатков"
+  description: "Здесь можно обновить остатки на маркетплейсах"
+
+paths:
+  /user:
+    post:
+      tags:
+        - "Авторизация"
+      parameters:
+        - in: "body"
+          name: "body"
+          description: "Выберите имя пользователя и пароль"
+          required: true
+          schema:
+            $ref: "#/definitions/User"
+      responses:
+        "200":
+          description: "Пользователь добавлен.  Вы можете получить свой токен по адресу /login"
+          schema:
+            $ref: "#/definitions/User"
+        "400":
+          description: "Ошибка валидации"
+        "404":
+          description: "Пользователь с таким логином уже существует"
+      summary: "Регистрация пользователя"
+      consumes:
+        - "application/json"
+      produces:
+        - "application/json"
+
+  /login:
+    post:
+      tags:
+        - "Авторизация"
+      parameters:
+        - in: "body"
+          name: "body"
+          description: "Введите имя пользователя и пароль"
+          required: true
+          schema:
+            $ref: "#/definitions/User"
+      responses:
+        "200":
+          description: "Токен успешно сгенерирован"
+          schema:
+            type: "object"
+            properties:
+              token:
+                type: "string"
+                description: "Токен авторизации"
+        "400":
+          description: "Неверные имя пользователя или пароль"
+        "404":
+          description: "Пользователь не найден"
+      summary: "Логин пользователя и получение токена"
+      consumes:
+        - "application/json"
+      produces:
+        - "application/json"
+
+  /stocks:
+    post:
+      tags:
+        - "Обновление остатков"
+      parameters:
+        - in: "body"
+          name: "body"
+          description: "Добавьте товары, которые вы хотите переместить"
+          required: true
+          schema:
+            $ref: "#/definitions/ProductStock"
+      responses:
+        "200":
+          description: "Остатки добавлены"
+        "400":
+          description: "Ошибка валидации"
+      security:
+        - Authorization: []
+      summary: "Добавление остатков товара для обновления"
+      consumes:
+        - "application/json"
+      produces:
+        - "application/json"
+
+  /rules:
+    post:
+      tags:
+        - "Обновление остатков"
+      parameters:
+        - in: "body"
+          name: "body"
+          description: "Введите правило для движения остатков"
+          required: true
+          schema:
+            $ref: "#/definitions/StockRules"
+      responses:
+        "200":
+          description: "Правило добавлено.  Введите номер правила (rule_id) как параметр метода /send_stocks."
+          schema:
+            type: "object"
+            properties:
+              rule_id:
+                type: "integer"
+                description: "Номер правила (rule_id)"
+        "400":
+          description: "Ошибка валидации"
+      security:
+        - Authorization: []
+      summary: "Добавление правила движения остатков на макретплейсах"
+      consumes:
+        - "application/json"
+      produces:
+        - "application/json"
+
+  /send_stocks:
+      post:
+        tags:
+          - "Обновление остатков"
+        parameters:
+          - in: "body"
+            name: "body"
+            description: "Выслать остатки на маркетплейсы"
+            required: true
+            schema:
+              $ref: "#/definitions/SendStocks"
+        responses:
+          "200":
+            description: "Остатки успешно высланы на маркетплейсы"
+            schema:
+              type: "array"
+              description: "Список ответов от маркеплейсов"
+              items:
+                type: "object"
+                properties:
+                  marketplace:
+                    type: "string"
+                    description: "Название маркетплейса"
+                  response:
+                    type: "object"
+                    description: "Ответ маркетплейса"
+          "400":
+            description: "Ошибка валидации"
+        security:
+          - Authorization: []
+        summary: "Отправка остатков на макретплейсы в соответствии с правилом"
+        consumes:
+          - "application/json"
+        produces:
+          - "application/json"
+
+securityDefinitions:
+  Authorization:
+      type: "apiKey"
+      name: "token"
+      in: "header"
+
+definitions:
+  User:
+    type: "object"
+    required:
+      - "username"
+      - "password"
+    properties:
+      username:
+        type: "string"
+        description: "Имя пользователя"
+      password:
+        type: "string"
+        description: "Пароль"
+
+  ProductStock:
+    type: "object"
+    required:
+      - "warehouse_id"
+      - "products"
+    properties:
+      account_id:
+        type: "integer"
+        description: "Номер аккаунта"
+      warehouse_id:
+        type: "integer"
+        description: "Номер склада"
+      products:
+        type: "array"
+        description: "Список товар-остаток"
+        items:
+          type: "object"
+          properties:
+            offer_id:
+              type: "string"
+              description: "Штрих-код"
+            stock:
+              type: "integer"
+              description: "Остаток"
+
+  StockRules:
+    type: "object"
+    required:
+      - "client_id"
+      - "actions"
+    properties:
+      client_id:
+        type: "integer"
+        description: "Номер клиента (client_id)"
+      filters:
+        type: "object"
+        properties:
+          categories:
+            type: "array"
+            items:
+              type: "string"
+            description: "Список категорий для фильтра"
+          brands:
+            type: "array"
+            items:
+              type: "string"
+            description: "Список брендов для фильтра"
+      actions:
+        type: "object"
+        properties:
+          send_stocks_to_accounts:
+            type: "array"
+            description: "Список аккаунтов, на которые нужно выслать остатки"
+            items:
+              type: "object"
+              properties:
+                account_id:
+                  type: "integer"
+                  description: "Номер аккаунта"
+                warehouse_id:
+                  type: "integer"
+                  description: "Номер склада"
+                percentage:
+                  type: "integer"
+                  description: "Процентное соотношение"
+          set_stocks_at_zero:
+            type: "array"
+            description: "Список аккаунтов, на которых нужно обнулить остатки"
+            items:
+              type: "object"
+              properties:
+                account_id:
+                  type: "integer"
+                warehouse_id:
+                    type: "integer"
+
+  SendStocks:
+    type: "object"
+    required:
+      - "warehouse_id"
+      - "rule_id"
+    properties:
+      warehouse_id:
+        type: "integer"
+        description: "Номер склада (warehouse_id)"
+      rule_id:
+        type: "integer"
+        description: "Номер правила (rule_id)"

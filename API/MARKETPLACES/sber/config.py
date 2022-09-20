@@ -1,0 +1,5 @@
+SBER_CLIENT_ID = ''
+SBER_API_KEY = ''
+URL_SBER_INFO = ''
+URL_SBER_STOCKS = 'https://partner.goodsteam.tech/api/merchantIntegration/v1/offerService/stock/update'
+URL_SBER_PRICES = 'https://partner.goodsteam.tech/api/merchantIntegration/v1/offerService/manualPrice/save'

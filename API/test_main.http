@@ -1,0 +1,81 @@
+###
+// ВЫСЛАТЬ ОСТАТКИ ДЛЯ ЗАПИСИ В БД
+// account_id: номер аккаунта клиента (не обязательный параметр)
+// warehouse_id: номер склада-источника
+POST http://localhost:5000/stocks
+Content-Type: application/json
+
+{"data":
+  {
+    "account_id": 105,
+    "warehouse_id": 999,
+    "products":
+      [
+        {
+          "offer_id": "S18DS95",
+          "stock": 50
+        },
+        {
+          "offer_id": "S18DS66",
+          "stock": 100
+        },
+        {
+          "offer_id": "SS19K10_M",
+          "stock": 200
+        }
+      ]
+  }
+}
+
+###
+// СОЗДАТЬ ПРАВИЛО
+// client_id: номер клиента
+// test categories: "17032630", "17033671"
+POST http://localhost:5000/rules
+Content-Type: application/json
+
+{"data":
+  {
+    "client_id": 2,
+    "filters":
+    {
+      "categories": ["17032630"],
+      "brands": []
+    },
+    "actions":
+    {
+      "send_stocks_to_accounts":
+      [
+        {
+          "account_id": 105,
+          "warehouse_id": 23605348895000,
+          "percentage": 30
+        },
+        {
+          "account_id": 24,
+          "warehouse_id": 23605348895000,
+          "percentage": 20
+        },
+        {
+          "account_id": 25,
+          "warehouse_id": 24813,
+          "percentage": 50
+        }
+      ]
+    }
+  }
+}
+
+###
+// ПРИНУДИТЕЛЬНО ПЕРЕДАТЬ ОСТАТКИ НА ПЛОЩАДКИ
+// warehouse_id: номер склада-источника
+// rule_id: порядковый номер заполненного правила
+POST http://localhost:5000/send_stocks
+Content-Type: application/json
+
+{"data":
+  {
+    "warehouse_id": 999,
+    "rule_id": 18
+  }
+}

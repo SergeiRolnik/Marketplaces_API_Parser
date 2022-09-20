@@ -1,0 +1,14 @@
+[
+    {
+        "offer_id": "S18DS95",
+        "stock": 10,
+        "warehouse_id": 23605348895000,
+        "updated_at": "2022-08-12T11:45:36+03:00"
+    },
+    {
+        "offer_id": "S18DS66",
+        "stock": 20,
+        "warehouse_id": 23605348895000,
+        "updated_at": "2022-08-12T11:45:36+03:00"
+    }
+]
