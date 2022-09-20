@@ -33,6 +33,7 @@ def process_account_data(account_id: int):
     mp_id, client_id, api_key, campaign_id = result[0]
     mp_object = create_mp_object(mp_id, client_id, api_key, campaign_id)
 
+    print('В обработке account_id:', account_id)
     # --------------------------------------- STOCKS ------------------------------------------------------
     # отправляем запрос в API площадки, получаем список словарей в формате:
     # [{'warehouse_id': ..., 'offer_id': ..., 'product_id': ..., 'stock_fbo': ... , 'stock_fbs': ... }, ...]
@@ -89,9 +90,6 @@ def process_account_data(account_id: int):
     elif mp_id == 1 or 2:
         products = append_cols(products, account_id, api_key)
 
-    # --- TESTING ---
-    products = products[1:10]
-
     sql = 'INSERT INTO ' \
           'price_table (offer_id, product_id, price, account_id, api_id, date) ' \
           'VALUES (%(offer_id)s, %(product_id)s, %(price)s, %(account_id)s, %(api_id)s, %(date)s)'
@@ -108,8 +106,8 @@ def main():
     accounts = [account[0] for account in accounts]  # список номеров аккаунтов (account_id)
 
     # для теста
-    accounts = [1]  # Озон
-    # accounts = [3]  # ВБ
+    # accounts = [1]  # Озон
+    accounts = [3]  # ВБ
 
     response = []
     with concurrent.futures.ThreadPoolExecutor() as executor:

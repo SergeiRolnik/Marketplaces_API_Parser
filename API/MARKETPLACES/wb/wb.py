@@ -1,13 +1,14 @@
 import requests
 from datetime import date
 import time
-from API.db import run_sql
+# from API.db import run_sql
 from loguru import logger
 from API.MARKETPLACES.wb.config import \
     URL_WILDBERRIES_INFO, \
     URL_WILDBERRIES_PRICES, \
     URL_WILDBERRIES_STOCKS_FBO, \
-    URL_WILDBERRIES_STOCKS_FBS
+    URL_WILDBERRIES_STOCKS_FBS, \
+    SLEEP_TIME
 
 
 class WildberriesApi:
@@ -41,8 +42,9 @@ class WildberriesApi:
 
     # --- ФУНКЦИИ STOCKS
     def get_stocks_fbo(self):  # GET /api/v2/stocks (--- функция для сбора остатков FBO ---)
-        NUMBER_OF_RECORDS_PER_PAGE = 3
+        NUMBER_OF_RECORDS_PER_PAGE = 1000
         count = 0
+        total = 0
         product_list = []
         while True:
             params = {
@@ -50,31 +52,23 @@ class WildberriesApi:
                 'take': NUMBER_OF_RECORDS_PER_PAGE           # cколько записей выдать (для пагинации)
                     }
             response = self.get(URL_WILDBERRIES_STOCKS_FBO, params)
-
-            print('response', response)
-            total = response.get('total')
-            if not response or total == 0:
-                break
             products = response.get('stocks')
-            product_list = [
-                {
-                    'warehouse_id': product['warehouseId'],
-                    'offer_id': product['article'],
-                    'product_id': '',  # в методе /api/v2/stocks нет nmId
-                    'stock_fbo': product['stock'],
-                    'stock_fbs': 0
-                }
-                for product in products
-            ]
+            if products:
+                total = response.get('total')
+                product_list = [
+                    {
+                        'warehouse_id': product['warehouseId'],
+                        'offer_id': product['article'],
+                        'product_id': '',  # в методе /api/v2/stocks нет nmId
+                        'stock_fbo': product['stock'],
+                        'stock_fbs': 0
+                    }
+                    for product in products
+                ]
             count += 1
             if total <= count * NUMBER_OF_RECORDS_PER_PAGE:
                 break
-
-            # --- TESTING ---
-            if count > 2:
-                break
-
-            time.sleep(3)
+            time.sleep(SLEEP_TIME)
         return product_list
         # формат [{'warehouse_id': ..., 'offer_id': ..., 'product_id': ..., 'stock_fbo': ... , 'stock_fbs': ...}, ...]
 
@@ -110,7 +104,7 @@ class WildberriesApi:
         products = [
             {
                 'offer_id': '',  # !!! надо найти offer_id по nmId
-                'product_id': str(product.get('nmId')),  # нет barcode, поэтому в качестве product_id вставляем nmId
+                'product_id': str(product.get('nmId')),
                 'price': product.get('price')
             }
             for product in products
