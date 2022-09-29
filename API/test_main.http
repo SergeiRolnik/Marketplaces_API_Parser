@@ -1,8 +1,19 @@
 ###
+POST http://localhost:5000/test
+Content-Type: application/json
+
+
+###
+POST http://api.ecomru.ru/stock_price/test
+Content-Type: application/json
+
+
+###
 // ВЫСЛАТЬ ОСТАТКИ ДЛЯ ЗАПИСИ В БД
 // account_id: номер аккаунта клиента (не обязательный параметр)
 // warehouse_id: номер склада-источника
-POST http://localhost:5000/stocks
+POST http://api.ecomru.ru:80/stock_price/stocks
+// POST http://localhost:5000/stocks
 Content-Type: application/json
 
 {"data":
@@ -26,6 +37,7 @@ Content-Type: application/json
       ]
   }
 }
+
 
 ###
 // СОЗДАТЬ ПРАВИЛО

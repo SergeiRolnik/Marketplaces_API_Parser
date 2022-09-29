@@ -9,3 +9,5 @@ target_session_attrs = read-write
 sslmode = verify-full
 sslrootcert=root.crt
 """
+
+TEST_ACCOUNTS = []  # номера аккаунтов в таблице account_list для тестирования

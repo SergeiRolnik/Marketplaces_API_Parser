@@ -8,7 +8,9 @@ from API.MARKETPLACES.yandex.config import \
     URL_YANDEX_INFO, \
     URL_YANDEX_PRICES, \
     URL_YANDEX_STOCKS, \
-    URL_YANDEX_SHOW_PRICES
+    URL_YANDEX_SHOW_PRICES, \
+    SLEEP_TIME, \
+    CHUNK_SIZE
 
 
 class YandexMarketApi:
@@ -45,8 +47,9 @@ class YandexMarketApi:
             logger.error(f'Ошибка в выполнении запроса Статус код:{response.status_code} URL:{url}')
 
     def get_info(self) -> list:  # GET /campaigns/{campaignId}/offer-mapping-entries (список товаров)
-        NUMBER_OF_RECORDS_PER_PAGE = 3
+        NUMBER_OF_RECORDS_PER_PAGE = 200
         page_token = ''
+        count = 0
         while True:
             params = {
                 'campaignId': self.campaign_id,
@@ -58,13 +61,17 @@ class YandexMarketApi:
                 break
             shop_skus = [product['offer']['shopSku'] for product in response['result']['offerMappingEntries']]
             page_token = response['result']['paging'].get('nextPageToken')
-            time.sleep(3)  # --- TESTING ---
-            if not page_token:  # проверить если ли токен для след. страницы, если нет, выйти из цикла
+            time.sleep(SLEEP_TIME)
+            count += 1
+            if count * NUMBER_OF_RECORDS_PER_PAGE == CHUNK_SIZE:
+                yield shop_skus
+                shop_skus.clear()
+            if not page_token:
+                if shop_skus:
+                    yield shop_skus
                 break
-        return shop_skus
 
-    def get_stocks(self):  # POST /stats/skus (--- остатки по складам FBY ---)
-        shop_skus = self.get_info()  # получить список shopSku из метода /campaigns/{campaignId}/offer-mapping-entries
+    def get_stocks(self, shop_skus: list):  # POST /stats/skus (--- остатки по складам FBY ---)
         product_list = []
         for i in range(0, len(shop_skus), 500):
             shop_skus_chunk = shop_skus[i: i + 500]  # shop_skus_chunk - части списка skus по 500 шт.
@@ -92,10 +99,10 @@ class YandexMarketApi:
 
     # --- ФУНКЦИЯ PRICES ---
     def get_prices(self) -> list:  # GET /offer-prices
-        NUMBER_OF_RECORDS_PER_PAGE = 3
+        NUMBER_OF_RECORDS_PER_PAGE = 2000
         page_token = ''
         product_list = []
-        count = 0  # --- TESTING ---
+        count = 0
         while True:
             params = {
                 'campaignId': self.campaign_id,
@@ -113,17 +120,18 @@ class YandexMarketApi:
                     'price': product['price'].get('value')   # без get выскакивают ошибки
                 })
             page_token = response['result']['paging'].get('nextPageToken')
-            if not page_token:
-                break
             count += 1
-            if count > 2:  # --- TESTING ---
+            time.sleep(SLEEP_TIME)
+            if count * NUMBER_OF_RECORDS_PER_PAGE == CHUNK_SIZE:
+                yield product_list
+                product_list.clear()
+            if not page_token:
+                if product_list:
+                    yield product_list
                 break
-        return product_list
 
     def update_prices(self, offers: list) -> list:  # POST /offer-prices/updates
-        params = {
-            'offers': offers
-        }
+        params = {'offers': offers}
         return self.post(self.get_url(URL_YANDEX_PRICES), params)
 
     def make_update_stocks_list(self, products: list, warehouse_id: str):

@@ -207,9 +207,16 @@ class SendStocksToMarketplaces(Resource):
         logger.info(f'Запрос выполнен успешно. URL:{request.base_url}')
         return response_to_client
 
+
+class TestAPI(Resource):
+    def post(self):
+        return {'message': 'Все ОК'}
+
+
 api.add_resource(AddStocksToDB, '/stocks')
 api.add_resource(CreateRule, '/rules')
 api.add_resource(SendStocksToMarketplaces, '/send_stocks')
+api.add_resource(TestAPI, '/test')
 
 if __name__ == '__main__':
     app.run(debug=True)

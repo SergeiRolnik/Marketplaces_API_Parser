@@ -1,14 +1,15 @@
 import requests
 from datetime import date
 import time
-# from API.db import run_sql
+from API.db import run_sql
 from loguru import logger
 from API.MARKETPLACES.wb.config import \
     URL_WILDBERRIES_INFO, \
     URL_WILDBERRIES_PRICES, \
     URL_WILDBERRIES_STOCKS_FBO, \
     URL_WILDBERRIES_STOCKS_FBS, \
-    SLEEP_TIME
+    SLEEP_TIME, \
+    CHUNK_SIZE
 
 
 class WildberriesApi:
@@ -24,11 +25,11 @@ class WildberriesApi:
                 }
         return headers
 
-    def get(self, url: str, params: dict):
-        response = requests.get(url=url, headers=self.get_headers(), params=params)
+    def get(self, url: str, params: dict, stream: bool):
+        response = requests.get(url=url, headers=self.get_headers(), params=params, stream=stream)
         if response.status_code == 200:
             logger.info(f'Запрос выполнен успешно Статус код:{response.status_code} URL:{url}')
-            return response.json()
+            return response
         else:
             logger.error(f'Ошибка в выполнении запроса Статус код:{response.status_code} URL:{url}')
 
@@ -36,7 +37,7 @@ class WildberriesApi:
         response = requests.post(url=url, headers=self.get_headers(), json=params)
         if response.status_code == 200:
             logger.info(f'Запрос выполнен успешно Статус код:{response.status_code} URL:{url}')
-            return response.json()
+            return response
         else:
             logger.error(f'Ошибка в выполнении запроса Статус код:{response.status_code} URL:{url}')
 
@@ -51,7 +52,8 @@ class WildberriesApi:
                 'skip': count * NUMBER_OF_RECORDS_PER_PAGE,  # cколько записей пропустить (для пагинации)
                 'take': NUMBER_OF_RECORDS_PER_PAGE           # cколько записей выдать (для пагинации)
                     }
-            response = self.get(URL_WILDBERRIES_STOCKS_FBO, params)
+            response = self.get(URL_WILDBERRIES_STOCKS_FBO, params, False)
+            response = response.json()
             products = response.get('stocks')
             if products:
                 total = response.get('total')
@@ -66,10 +68,14 @@ class WildberriesApi:
                     for product in products
                 ]
             count += 1
-            if total <= count * NUMBER_OF_RECORDS_PER_PAGE:
-                break
             time.sleep(SLEEP_TIME)
-        return product_list
+            if count * NUMBER_OF_RECORDS_PER_PAGE == CHUNK_SIZE:
+                yield product_list
+                product_list.clear()
+            if total <= count * NUMBER_OF_RECORDS_PER_PAGE:
+                if product_list:
+                    yield product_list
+                break
         # формат [{'warehouse_id': ..., 'offer_id': ..., 'product_id': ..., 'stock_fbo': ... , 'stock_fbs': ...}, ...]
 
     # также можно собирать цены --- STOCKS / PRICES ---
@@ -78,43 +84,52 @@ class WildberriesApi:
             'key': self.supplier_api_key,  # оба параметра обязательные
             'dateFrom': date.today()
         }
-        products = self.get(URL_WILDBERRIES_STOCKS_FBS, params)
-        products = [
-            {
-                'warehouse_id': product['warehouse'],
-                'offer_id': product['supplierArticle'],
-                'product_id': str(product['nmId']),
-                'stock_fbo': 0,
-                'stock_fbs': product['quantityFull'],
-                'price': product['Price']
-            }
-            for product in products
-        ]
-        return products
-        # формат [{'warehouse_id': ..., 'offer_id': ..., 'stock_fbo': ... , 'stock_fbs': ..., 'price', ....}, ...]
+        response = self.get(URL_WILDBERRIES_STOCKS_FBS, params, True)  # stream=True
+        chunks = iter(response.json())
+        products = []
+        for chunk in chunks:
+            product = {
+                    'warehouse_id': chunk['warehouse'],
+                    'offer_id': chunk['supplierArticle'],
+                    'product_id': str(chunk['nmId']),
+                    'stock_fbo': 0,
+                    'stock_fbs': chunk['quantityFull'],
+                    'price': chunk['Price']
+                }
+            products.append(product)
+            if len(products) == CHUNK_SIZE:
+                yield products
+                products.clear()
+        if products:
+            yield products
+            # формат [{'warehouse_id': ..., 'offer_id': ..., 'stock_fbo': ... , 'stock_fbs': ..., 'price', ....}, ...]
 
     def update_stocks(self, stocks: list):  # POST /api/v2/stocks (обновление остатков)
         # stocks - список словарей типа {'barcode': str, 'stock': int, 'warehouseId': int}
-        return self.post(URL_WILDBERRIES_STOCKS_FBO, stocks)
+        return self.post(URL_WILDBERRIES_STOCKS_FBO, stocks).json()
 
     # --- ФУНКЦИИ PRICES
-    def get_prices(self) -> list:  # GET /public/api/v1/info (номенклатуры,цены, скидки и промокоды)
+    def get_prices(self):  # GET /public/api/v1/info (номенклатуры,цены, скидки и промокоды)
         params = {'quantity': 0}  # 2 - товар с нулевым остатком, 1 - с ненулевым остатком, 0 - с любым остатком
-        products = self.get(URL_WILDBERRIES_INFO, params)
-        products = [
-            {
-                'offer_id': '',  # !!! надо найти offer_id по nmId
-                'product_id': str(product.get('nmId')),
-                'price': product.get('price')
-            }
-            for product in products
-        ]
-        return products
-        # список словарей [{'offer_id': ...., 'product_id': ...., 'price': ....}, ....]
+        response = self.get(URL_WILDBERRIES_INFO, params, True)  # stream=True
+        chunks = iter(response.json())
+        products = []
+        for chunk in chunks:
+            product = {
+                    'offer_id': '',  # !!! надо найти offer_id по nmId
+                    'product_id': str(chunk.get('nmId')),
+                    'price': chunk.get('price')
+                }
+            products.append(product)
+            if len(products) == CHUNK_SIZE:
+                yield products
+                products.clear()
+        if products:
+            yield products  # список словарей [{'offer_id': ...., 'product_id': ...., 'price': ....}, ....]
 
     def update_prices(self, prices: list):  # POST /public/api/v1/prices (обновление цен)
         # prices - список словарей типа {'nmId': int, 'price': int}
-        return self.post(URL_WILDBERRIES_PRICES, prices)
+        return self.post(URL_WILDBERRIES_PRICES, prices).json()
 
     # ПОДГОТОВИТЬ СПИСКИ ДЛЯ ОБНОВЛЕНИЯ ОСТАТКОВ НА ПЛОЩАДКЕ
     def make_update_stocks_list(self, products: list, warehouse_id: str):

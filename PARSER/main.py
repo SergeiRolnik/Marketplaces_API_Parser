@@ -6,6 +6,7 @@ import concurrent.futures
 from loguru import logger
 from db import run_sql, run_sql_account_list
 from datetime import date
+from config import TEST_ACCOUNTS
 
 
 def create_mp_object(mp_id: int, client_id: str, api_key: str, campaign_id: str):
@@ -20,11 +21,21 @@ def create_mp_object(mp_id: int, client_id: str, api_key: str, campaign_id: str)
 
 
 def append_cols(products: list, account_id: int, api_id: str):  # добавить account_id, api_id и дату к списку товаров
+    today = str(date.today())
     for product in products:
         product['account_id'] = account_id
-        product['date'] = str(date.today())
+        product['date'] = today
         product['api_id'] = api_id
     return products
+
+
+def insert_into_db(table_name: str, products: list):  # products - список для записи в БД
+    fields = ','.join(list(products[0].keys()))
+    fields = fields.replace('stock_fbo', 'fbo_present')
+    fields = fields.replace('stock_fbs', 'fbs_present')
+    values = ','.join([f'%({value})s' for value in list(products[0].keys())])
+    sql = f'INSERT INTO {table_name} ({fields}) VALUES ({values})'
+    run_sql(sql, products)
 
 
 def process_account_data(account_id: int):
@@ -32,82 +43,113 @@ def process_account_data(account_id: int):
     result = run_sql_account_list(sql, (str(account_id),))
     mp_id, client_id, api_key, campaign_id = result[0]
     mp_object = create_mp_object(mp_id, client_id, api_key, campaign_id)
+    print('В обработке account_id:', account_id, 'mp_id:', mp_id)
 
-    print('В обработке account_id:', account_id)
-    # --------------------------------------- STOCKS ------------------------------------------------------
-    # отправляем запрос в API площадки, получаем список словарей в формате:
-    # [{'warehouse_id': ..., 'offer_id': ..., 'product_id': ..., 'stock_fbo': ... , 'stock_fbs': ... }, ...]
-    if mp_id == 1:  # ОЗОН
-        all_products = mp_object.get_stocks_info()
-        # список словарей [{'offer_id': ... , 'product_id': ... , 'stock_fbo': ..., 'stock_fbs': ... }, .... ]
-        all_products_values = append_cols(all_products, account_id, api_key)
-        sql = 'INSERT INTO ' \
-              'total_stock (offer_id, product_id, fbo_present, fbs_present, account_id, api_id, date) ' \
-              'VALUES (%(offer_id)s, %(product_id)s, %(stock_fbo)s, %(stock_fbs)s, %(account_id)s, %(api_id)s, %(date)s)'
-        run_sql(sql, all_products_values)
-        products = mp_object.get_stocks_fbo(all_products) + \
-                   mp_object.get_stocks_fbs(all_products)
-        products = append_cols(products, account_id, api_key)
-    elif mp_id == 2:  # ЯМ
-        products = mp_object.get_stocks()
-        products = append_cols(products, account_id, api_key)
-    elif mp_id == 3:  # ВБ
-        products_fbo = mp_object.get_stocks_fbo()
-        products_fbs = mp_object.get_stocks_fbs()  # ниже используется также для получения цен
-        products_fbs_stocks = [  # выбираем нужные поля
-            {
-                'warehouse_id': product['warehouse_id'],
-                'offer_id': product['offer_id'],
-                'product_id': product['product_id'],
-                'stock_fbo': product['stock_fbo'],
-                'stock_fbs': product['stock_fbs']
-            }
-            for product in products_fbs
-        ]
-        products = append_cols(products_fbo, account_id, client_id) + \
-                   append_cols(products_fbs_stocks, account_id, api_key)
-    sql = 'INSERT INTO ' \
-          'stock_by_wh (warehouse_id, offer_id, product_id, fbo_present, fbs_present, account_id, api_id, date) ' \
-          'VALUES (%(warehouse_id)s, %(offer_id)s, %(product_id)s, %(stock_fbo)s, %(stock_fbs)s, %(account_id)s, %(api_id)s, %(date)s)'
-    run_sql(sql, products)
+    if mp_id == 1:  # -------------------------------------- ОЗОН ----------------------------------------
 
-    # ------------------------------------------ PRICES ------------------------------------------------
-    # отправляем запрос в API площадки, получаем список словарей в формате:
-    # [{'offer_id': ..., 'product_id': ..., 'price': ... }, ...]
-    products = mp_object.get_prices()
-    if mp_id == 3:  # для ВБ дополнительно взять цены из get_stocks_fbs()
-        products_fbs_prices = [  # выбираем нужные поля
-            {
-                'offer_id': product['offer_id'],
-                'product_id': product['product_id'],
-                'price': product['price']
-            }
-            for product in products_fbs
-        ]
-        products = append_cols(products, account_id, client_id) + \
-                   append_cols(products_fbs_prices, account_id, api_key)
+        # --- ALL PRODUCTS --- (данные для таблицы total_stock)
+        for stocks_chunk in mp_object.get_stocks_info():
+            stocks_chunk = append_cols(stocks_chunk, account_id, api_key)
+            insert_into_db('total_stock', stocks_chunk)  # запись в БД по 10,000 шт.
 
-    elif mp_id == 1 or 2:
-        products = append_cols(products, account_id, api_key)
+            # --- STOCKS FBS ---
+            offer_ids = [product['offer_id'] for product in stocks_chunk]
+            fbs_skus = mp_object.get_product_info_list(offer_ids)
+            products_fbs = mp_object.get_stocks_fbs(fbs_skus)
+            products_fbs = append_cols(products_fbs, account_id, api_key)
+            insert_into_db('stock_by_wh', products_fbs)  # запись в БД по 10,000 шт.
 
-    sql = 'INSERT INTO ' \
-          'price_table (offer_id, product_id, price, account_id, api_id, date) ' \
-          'VALUES (%(offer_id)s, %(product_id)s, %(price)s, %(account_id)s, %(api_id)s, %(date)s)'
-    run_sql(sql, products)
-    return {'account_id': account_id, 'result': 'OK'}  # !!! что выводить как результат выполнения функции?
+        # --- STOCKS FBO ---
+        for products_fbo_chunk in mp_object.get_stocks_fbo():
+            products_fbo_chunk = append_cols(products_fbo_chunk, account_id, api_key)
+            insert_into_db('stock_by_wh', products_fbo_chunk)
+
+        # --- PRICES ---
+        for prices_chunk in mp_object.get_prices():
+            prices_chunk = append_cols(prices_chunk, account_id, api_key)
+            insert_into_db('price_table', prices_chunk)  # запись в БД по 10,000 шт.
+
+    elif mp_id == 2:  # ------------------------ ЯМ ------------------------------------------------------------
+
+        # --- STOCKS ---
+        for shop_skus_chunk in mp_object.get_info():
+            products = mp_object.get_stocks(shop_skus_chunk)
+            products = append_cols(products, account_id, api_key)
+            insert_into_db('stock_by_wh', products)  # запись в БД по 10,000 шт.
+
+        # --- PRICES ---
+        for prices_chunk in mp_object.get_prices():
+            prices_chunk = append_cols(prices_chunk, account_id, api_key)
+            insert_into_db('price_table', prices_chunk)  # запись в БД по 10,000 шт.
+
+    elif mp_id == 3:  # ---------------------------------- ВБ --------------------------------------------------
+
+        # --- STOCKS FBO ---
+        for products_fbo_chunk in mp_object.get_stocks_fbo():
+            products_fbo_chunk = append_cols(products_fbo_chunk, account_id, api_key)
+            insert_into_db('stock_by_wh', products_fbo_chunk)  # запись в БД по 10,000 шт.
+
+        # --- STOCKS FBS / PRICES FBS (ИСПОЛЬЗУЕТСЯ ОДИН И ТОТ ЖЕ МЕТОД)
+        for products_fbs_chunk in mp_object.get_stocks_fbs():
+
+            # --- STOCKS ---
+            products_fbs_stocks = [
+                {
+                    'warehouse_id': product['warehouse_id'],
+                    'offer_id': product['offer_id'],
+                    'product_id': product['product_id'],
+                    'stock_fbo': product['stock_fbo'],
+                    'stock_fbs': product['stock_fbs']
+                }
+                for product in products_fbs_chunk
+            ]
+            products_fbs_stocks = append_cols(products_fbs_stocks, account_id, api_key)
+            insert_into_db('stock_by_wh', products_fbs_stocks)  # запись в БД по 10,000 шт.
+
+            # --- PRICES ---
+            prices_fbs = [
+                {
+                    'offer_id': product['offer_id'],
+                    'product_id': product['product_id'],
+                    'price': product['price']
+                }
+                for product in products_fbs_chunk
+            ]
+            prices_fbs = append_cols(prices_fbs, account_id, api_key)
+            insert_into_db('price_table', prices_fbs)  # запись в БД по 10,000 шт.
+
+        # --- PRICES FBO ---
+        for prices_fbo in mp_object.get_prices():
+            prices_fbo = append_cols(prices_fbo, account_id, api_key)
+            insert_into_db('price_table', prices_fbo)  # запись в БД по 10,000 шт.
+
+    return {'account_id': account_id, 'result': 'OK'}
 
 
 def main():
     logger.remove()
     logger.add(sink='logfile.log', format="{time} {level} {message}", level="INFO")
 
-    sql = 'SELECT * FROM account_list'  # цикл по всем аккаунтам
-    accounts = run_sql_account_list(sql, ())
-    accounts = [account[0] for account in accounts]  # список номеров аккаунтов (account_id)
+    sql = 'SELECT id FROM marketplaces_list'
+    result = run_sql_account_list(sql, ())
+    mp_ids = [item[0] for item in result]
 
-    # для теста
-    # accounts = [1]  # Озон
-    accounts = [3]  # ВБ
+    unique_fields = {  # поля в таблице account_list по которым проводится фильтрация дупликатов
+        1: 'client_id_api, api_key',  # Озон
+        2: 'client_id_api, api_key, campaigns_id',  # ЯМ
+        3: 'client_id_api, api_key'  # ВБ
+    }
+
+    mp_ids = list(set(mp_ids) & set(list(unique_fields.keys())))  # отбираем только те МП, где указаны уникальные поля
+    accounts = []
+    for mp_id in mp_ids:  # проходим по всем аккаунтам и выбираем только уникальные значение client_id_api, api_key
+        sql = f'SELECT MIN(id) FROM account_list WHERE mp_id={mp_id} GROUP BY {unique_fields[mp_id]}'
+        result = run_sql_account_list(sql, ())
+        mp_accounts = [item[0] for item in result]
+        accounts += mp_accounts
+
+    if TEST_ACCOUNTS:  # список номеров аккаунтов в таблице account_list для тестирования (указать в config.py)
+        accounts = TEST_ACCOUNTS
 
     response = []
     with concurrent.futures.ThreadPoolExecutor() as executor:

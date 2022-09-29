@@ -15,3 +15,5 @@ URL_OZON_STOCKS_BY_WAREHOUSE_FBS = BASE_URL + '/v1/product/info/stocks-by-wareho
 URL_OZON_PRODUCT_INFO_LIST = BASE_URL + '/v2/product/info/list'
 
 SLEEP_TIME = 5  # время между запросами в API Озона (сек)
+
+CHUNK_SIZE = 2000

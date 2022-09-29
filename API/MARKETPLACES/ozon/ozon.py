@@ -13,7 +13,8 @@ from API.MARKETPLACES.ozon.config import \
     URL_OZON_PRICES_INFO,\
     URL_OZON_STOCKS_BY_WAREHOUSE_FBS,\
     URL_OZON_PRODUCT_INFO_LIST, \
-    SLEEP_TIME
+    SLEEP_TIME, \
+    CHUNK_SIZE
 
 
 class OzonApi:
@@ -39,7 +40,7 @@ class OzonApi:
             logger.error(f'Ошибка в выполнении запроса Статус код:{response.status_code} URL:{url}')
 
     # --- ФУНКЦИИ STOCKS ---
-    def get_stocks_fbo(self, all_products: list) -> list:  # /v1/analytics/stock_on_warehouses
+    def get_stocks_fbo(self) -> list:  # /v1/analytics/stock_on_warehouses
         # all_products - список [{'offer_id': ... 'product_id': ..., 'stock_fbo': ..., 'stock_fbs': ... }, .... ]
         NUMBER_OF_RECORDS_PER_PAGE = 1000
         products = []
@@ -57,8 +58,12 @@ class OzonApi:
                 for warehouse in warehouses:
                     for product in warehouse['items']:
                         offer_id = product['offer_id']
-                        product_id_filter = list(filter(lambda item: item['offer_id'] == offer_id, all_products))
-                        product_id = product_id_filter[0]['product_id']
+
+                        # !!! брать из таблицы product_list
+                        # product_id_filter = list(filter(lambda item: item['offer_id'] == offer_id, all_products))
+                        # product_id = product_id_filter[0]['product_id']
+                        product_id = ''
+
                         products.append(
                             {
                                 'warehouse_id': warehouse['id'],
@@ -70,16 +75,19 @@ class OzonApi:
                         )
             time.sleep(SLEEP_TIME)
             count += 1
+
+            if count * NUMBER_OF_RECORDS_PER_PAGE == CHUNK_SIZE:
+                yield products
+                products.clear()
+
             if total <= count * NUMBER_OF_RECORDS_PER_PAGE:
+                if products:
+                    yield products
                 break
-        return products
         # формат [{'warehouse_id': ..., 'offer_id': ..., 'product_id': ..., 'stock_fbo': ... , 'stock_fbs': ... }, ...]
 
-    def get_stocks_fbs(self, all_products: list) -> list:  # /v1/product/info/stocks-by-warehouse/fbs
+    def get_stocks_fbs(self, fbs_skus: list) -> list:  # /v1/product/info/stocks-by-warehouse/fbs
         # получить fbs_sku в ответе методов /v2/product/info (get_product_info) и /v2/product/info/list
-        # all_products - список [{'offer_id': ... 'product_id': ..., 'stock_fbo': ..., 'stock_fbs': ... }, .... ]
-        offer_ids = [product['offer_id'] for product in all_products]
-        fbs_skus = self.get_product_info_list(offer_ids)
         product_list = []
         for i in range(0, len(fbs_skus), 500):
             fbs_skus_chunk = fbs_skus[i: i + 500]  # fbs_skus_chunk - части списка fbs_skus по 500 шт.
@@ -89,8 +97,12 @@ class OzonApi:
                 products = response['result']
                 for product in products:
                     product_id = str(product['product_id'])
-                    offer_id_filter = list(filter(lambda item: item['product_id'] == product_id, all_products))
-                    offer_id = offer_id_filter[0]['offer_id']
+
+                    # !!! взять из БД, таблица product_list
+                    # offer_id_filter = list(filter(lambda item: item['product_id'] == product_id, all_products))
+                    # offer_id = offer_id_filter[0]['offer_id']
+                    offer_id = ''  # --- TESTING ---
+
                     product_list.append(
                         {
                             'warehouse_id': product['warehouse_id'],
@@ -137,12 +149,19 @@ class OzonApi:
                             'stock_fbs': stock_fbs
                         }
                     )
+
             time.sleep(SLEEP_TIME)
             count += 1
+
+            if count * NUMBER_OF_RECORDS_PER_PAGE == CHUNK_SIZE:
+                yield product_list
+                product_list.clear()
+
             if total <= count * NUMBER_OF_RECORDS_PER_PAGE:
+                if product_list:
+                    yield product_list
                 break
-        return product_list
-        # список словарей [{'offer_id': ... , 'product_id': ... , 'stock_fbo': ..., 'stock_fbs': ... }, .... ]
+            # список словарей [{'offer_id': ... , 'product_id': ... , 'stock_fbo': ..., 'stock_fbs': ... }, .... ]
 
     # --- ФУНКЦИИ PRICES ---
     def get_prices(self) -> list:   # POST /v4/product/info/prices
@@ -170,9 +189,15 @@ class OzonApi:
                     })
             time.sleep(SLEEP_TIME)
             count += 1
+
+            if count * NUMBER_OF_RECORDS_PER_PAGE == CHUNK_SIZE:
+                yield product_list
+                product_list.clear()
+
             if total <= count * NUMBER_OF_RECORDS_PER_PAGE:
+                if product_list:
+                    yield product_list
                 break
-        return product_list
 
     def update_prices(self, prices: list) -> list:  # POST /v1/product/import/prices
         params = {'prices': prices}
