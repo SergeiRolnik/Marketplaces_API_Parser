@@ -1,6 +1,7 @@
 from pprint import pprint
 import requests
 import time
+from PARSER.config import CHUNK_SIZE, SLEEP_TIME
 from API.MARKETPLACES.sber.config import \
     SBER_API_KEY, \
     URL_SBER_PRICES, \

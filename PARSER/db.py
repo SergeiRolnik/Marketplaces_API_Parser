@@ -43,3 +43,18 @@ def run_sql_account_list(sql: str, values: tuple):
     finally:
         if connection:
             db_connection_pool.disconnect_from_pool(connection)
+
+
+def run_sql_get_offer_ids(sql: str):
+    try:
+        connection = db_connection_pool.connect_to_pool()
+        cursor = connection.cursor()
+        cursor.execute(sql)
+        column_names = [col[0] for col in cursor.description]
+        result = [dict(zip(column_names, row)) for row in cursor.fetchall()]  # преобразовать в список словарей
+        return result
+    except Exception as error:
+        logger.error(f'Ошибка {error} при обработке SQL запроса {sql}')
+    finally:
+        if connection:
+            db_connection_pool.disconnect_from_pool(connection)

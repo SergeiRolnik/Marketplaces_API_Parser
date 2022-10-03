@@ -3,14 +3,13 @@ import json
 from datetime import datetime
 from loguru import logger
 import time
+from PARSER.config import CHUNK_SIZE, SLEEP_TIME
 from API.MARKETPLACES.yandex.config import \
     BASE_URL, \
     URL_YANDEX_INFO, \
     URL_YANDEX_PRICES, \
     URL_YANDEX_STOCKS, \
-    URL_YANDEX_SHOW_PRICES, \
-    SLEEP_TIME, \
-    CHUNK_SIZE
+    URL_YANDEX_SHOW_PRICES
 
 
 class YandexMarketApi:
@@ -63,7 +62,7 @@ class YandexMarketApi:
             page_token = response['result']['paging'].get('nextPageToken')
             time.sleep(SLEEP_TIME)
             count += 1
-            if count * NUMBER_OF_RECORDS_PER_PAGE == CHUNK_SIZE:
+            if count * NUMBER_OF_RECORDS_PER_PAGE % CHUNK_SIZE == 0:
                 yield shop_skus
                 shop_skus.clear()
             if not page_token:
@@ -115,14 +114,13 @@ class YandexMarketApi:
             products = response['result']['offers']
             for product in products:
                 product_list.append({
-                    'offer_id': '',  # !!! надо вычислять offer_id (shopSku) по marketSku
                     'product_id': str(product.get('marketSku')),  # без get выскакивают ошибки
                     'price': product['price'].get('value')   # без get выскакивают ошибки
                 })
             page_token = response['result']['paging'].get('nextPageToken')
             count += 1
             time.sleep(SLEEP_TIME)
-            if count * NUMBER_OF_RECORDS_PER_PAGE == CHUNK_SIZE:
+            if count * NUMBER_OF_RECORDS_PER_PAGE % CHUNK_SIZE == 0:
                 yield product_list
                 product_list.clear()
             if not page_token:
@@ -146,7 +144,6 @@ class YandexMarketApi:
                     'warehouse_id': warehouse_id,
                     'updated_at': updated_at
                 })
-
         # запись в json файл, чтобы ЯМ мог потом считать остатки через API
         file = open('API/ym_data.json', 'a', encoding='utf-8')
         json.dump(update_stocks_list, file, indent=4)

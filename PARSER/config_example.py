@@ -10,4 +10,8 @@ sslmode = verify-full
 sslrootcert=root.crt
 """
 
-TEST_ACCOUNTS = []  # номера аккаунтов в таблице account_list для тестирования
+CHUNK_SIZE = 2000
+
+SLEEP_TIME = 5  # время между запросами в API Озона (сек)
+
+TEST_ACCOUNTS = []  # номера аккаунтов в таблице account_list для тестирования (для продакшн TEST_ACCOUNTS = [])

@@ -4,7 +4,3 @@ URL_YANDEX_INFO = '/offer-mapping-entries'
 URL_YANDEX_PRICES = '/offer-prices/updates'
 URL_YANDEX_SHOW_PRICES = '/offer-prices'
 URL_YANDEX_STOCKS = '/stats/skus'
-
-SLEEP_TIME = 5  # перерыв между запросами (сек)
-
-CHUNK_SIZE = 2000

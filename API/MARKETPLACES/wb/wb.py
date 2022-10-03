@@ -3,13 +3,12 @@ from datetime import date
 import time
 from API.db import run_sql
 from loguru import logger
+from PARSER.config import CHUNK_SIZE, SLEEP_TIME
 from API.MARKETPLACES.wb.config import \
     URL_WILDBERRIES_INFO, \
     URL_WILDBERRIES_PRICES, \
     URL_WILDBERRIES_STOCKS_FBO, \
-    URL_WILDBERRIES_STOCKS_FBS, \
-    SLEEP_TIME, \
-    CHUNK_SIZE
+    URL_WILDBERRIES_STOCKS_FBS
 
 
 class WildberriesApi:
@@ -52,7 +51,7 @@ class WildberriesApi:
                 'skip': count * NUMBER_OF_RECORDS_PER_PAGE,  # cколько записей пропустить (для пагинации)
                 'take': NUMBER_OF_RECORDS_PER_PAGE           # cколько записей выдать (для пагинации)
                     }
-            response = self.get(URL_WILDBERRIES_STOCKS_FBO, params, False)
+            response = self.get(URL_WILDBERRIES_STOCKS_FBO, params, False)  # stream=False
             response = response.json()
             products = response.get('stocks')
             if products:
@@ -61,22 +60,20 @@ class WildberriesApi:
                     {
                         'warehouse_id': product['warehouseId'],
                         'offer_id': product['article'],
-                        'product_id': '',  # в методе /api/v2/stocks нет nmId
+                        'product_id': str(product['nmId']),
                         'stock_fbo': product['stock'],
                         'stock_fbs': 0
                     }
-                    for product in products
-                ]
+                    for product in products]
             count += 1
             time.sleep(SLEEP_TIME)
-            if count * NUMBER_OF_RECORDS_PER_PAGE == CHUNK_SIZE:
+            if count * NUMBER_OF_RECORDS_PER_PAGE % CHUNK_SIZE == 0:
                 yield product_list
                 product_list.clear()
             if total <= count * NUMBER_OF_RECORDS_PER_PAGE:
                 if product_list:
                     yield product_list
                 break
-        # формат [{'warehouse_id': ..., 'offer_id': ..., 'product_id': ..., 'stock_fbo': ... , 'stock_fbs': ...}, ...]
 
     # также можно собирать цены --- STOCKS / PRICES ---
     def get_stocks_fbs(self):  # GET /api/v1/supplier/stocks (--- функция для сбора остатков FBS ---)
@@ -97,16 +94,11 @@ class WildberriesApi:
                     'price': chunk['Price']
                 }
             products.append(product)
-            if len(products) == CHUNK_SIZE:
+            if len(products) % CHUNK_SIZE == 0:
                 yield products
                 products.clear()
         if products:
             yield products
-            # формат [{'warehouse_id': ..., 'offer_id': ..., 'stock_fbo': ... , 'stock_fbs': ..., 'price', ....}, ...]
-
-    def update_stocks(self, stocks: list):  # POST /api/v2/stocks (обновление остатков)
-        # stocks - список словарей типа {'barcode': str, 'stock': int, 'warehouseId': int}
-        return self.post(URL_WILDBERRIES_STOCKS_FBO, stocks).json()
 
     # --- ФУНКЦИИ PRICES
     def get_prices(self):  # GET /public/api/v1/info (номенклатуры,цены, скидки и промокоды)
@@ -116,16 +108,20 @@ class WildberriesApi:
         products = []
         for chunk in chunks:
             product = {
-                    'offer_id': '',  # !!! надо найти offer_id по nmId
                     'product_id': str(chunk.get('nmId')),
                     'price': chunk.get('price')
                 }
             products.append(product)
-            if len(products) == CHUNK_SIZE:
+            if len(products) % CHUNK_SIZE == 0:
                 yield products
                 products.clear()
         if products:
-            yield products  # список словарей [{'offer_id': ...., 'product_id': ...., 'price': ....}, ....]
+            yield products  # список словарей {'product_id': ...., 'price': ....}
+
+    # --- ФУНКЦИИ UPDATE (API)
+    def update_stocks(self, stocks: list):  # POST /api/v2/stocks (обновление остатков)
+        # stocks - список словарей типа {'barcode': str, 'stock': int, 'warehouseId': int}
+        return self.post(URL_WILDBERRIES_STOCKS_FBO, stocks).json()
 
     def update_prices(self, prices: list):  # POST /public/api/v1/prices (обновление цен)
         # prices - список словарей типа {'nmId': int, 'price': int}
@@ -149,15 +145,5 @@ class WildberriesApi:
         return update_stocks_list
 
     # функция обрабатывает ответ с каждой площадки
-    # в результате клиенту отправляется список словарей {'product_id': ..., 'account_id': ...., 'updated': True/False}
     def process_mp_response(self, response: dict, account_id: int, products: list):
-        # processed_response = []
-
-        # формат ответа WB при успешном выполнении запроса
-        # {'additionalErrors': None, 'data': {'errors': None}, 'errorText': '', 'error': False}
-        # в ответе от WB товары не перечисляются, поэтому, если нет ошибок, выводим, что для всех товаров все ок
-        # for product in products:
-        #     processed_response.append(
-        #         {'offer_id': product['offer_id'], 'account_id': account_id, 'updated': not response['error']})
-
         return response
