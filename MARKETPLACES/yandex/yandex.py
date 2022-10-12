@@ -4,7 +4,7 @@ from datetime import datetime
 from loguru import logger
 import time
 from PARSER.config import CHUNK_SIZE, SLEEP_TIME
-from API.MARKETPLACES.yandex.config import \
+from MARKETPLACES.yandex.config import \
     BASE_URL, \
     URL_YANDEX_INFO, \
     URL_YANDEX_PRICES, \

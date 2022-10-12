@@ -4,7 +4,7 @@ import time
 # from API.db import run_sql
 from loguru import logger
 from PARSER.config import CHUNK_SIZE, SLEEP_TIME
-from API.MARKETPLACES.wb.config import \
+from MARKETPLACES.wb.config import \
     URL_WILDBERRIES_INFO, \
     URL_WILDBERRIES_PRICES, \
     URL_WILDBERRIES_STOCKS_FBO, \

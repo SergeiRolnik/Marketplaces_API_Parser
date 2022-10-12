@@ -2,7 +2,7 @@ import requests
 import time
 from loguru import logger
 from PARSER.config import CHUNK_SIZE, SLEEP_TIME
-from API.MARKETPLACES.ozon.config import \
+from MARKETPLACES.ozon.config import \
     URL_OZON_PRODUCTS, \
     URL_OZON_PRODUCT_INFO, \
     URL_OZON_STOCKS, \

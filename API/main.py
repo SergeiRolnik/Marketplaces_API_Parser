@@ -3,10 +3,10 @@ from flask_restful import Api, Resource, reqparse
 from loguru import logger
 import concurrent.futures
 import datetime
-from API.MARKETPLACES.ozon.ozon import OzonApi
-from API.MARKETPLACES.wb.wb import WildberriesApi
-from API.MARKETPLACES.yandex.yandex import YandexMarketApi
-from API.MARKETPLACES.sber.sber import SberApi
+from MARKETPLACES.ozon.ozon import OzonApi
+from MARKETPLACES.wb.wb import WildberriesApi
+from MARKETPLACES.yandex.yandex import YandexMarketApi
+from MARKETPLACES.sber.sber import SberApi
 from API.db import run_sql
 from API.config import MAX_NUMBER_OF_PRODUCTS, NUMBER_OF_PRODUCTS_TO_PROCESS
 

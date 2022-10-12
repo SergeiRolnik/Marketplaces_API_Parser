@@ -1,7 +1,7 @@
-from API.MARKETPLACES.ozon.ozon import OzonApi
-from API.MARKETPLACES.wb.wb import WildberriesApi
-from API.MARKETPLACES.yandex.yandex import YandexMarketApi
-from API.MARKETPLACES.sber.sber import SberApi
+from MARKETPLACES.ozon.ozon import OzonApi
+from MARKETPLACES.wb.wb import WildberriesApi
+from MARKETPLACES.yandex.yandex import YandexMarketApi
+from MARKETPLACES.sber.sber import SberApi
 import concurrent.futures
 from loguru import logger
 from db import run_sql, run_sql_account_list, run_sql_get_offer_ids
@@ -80,6 +80,8 @@ def process_account_data(account_id: int):
         warehouses = mp_object.get_warehouses()  # POST /v1/warehouse/list список складов
         insert_into_db('wh_table', warehouses)
         warehouses.clear()
+
+        test = input('OK')
 
         # --- PRODUCTS ---
         for products_chunk in mp_object.get_product_list([], []):  # /v2/product/list (список всех товаров)
