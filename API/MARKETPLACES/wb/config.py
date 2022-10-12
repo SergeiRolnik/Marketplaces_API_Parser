@@ -11,3 +11,6 @@ URL_WILDBERRIES_STOCKS_FBO = BASE_URL + '/api/v2/stocks'  # GET, POST, DELETE
 
 # получение информации по остаткам (склады поставщика/FBS)
 URL_WILDBERRIES_STOCKS_FBS = 'https://suppliers-stats.wildberries.ru/api/v1/supplier/stocks'
+
+# список складов
+URL_WILDBERRIES_WAREHOUSES = BASE_URL + '/api/v2/warehouses'

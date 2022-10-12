@@ -1,14 +1,15 @@
 import requests
 from datetime import date
 import time
-from API.db import run_sql
+# from API.db import run_sql
 from loguru import logger
 from PARSER.config import CHUNK_SIZE, SLEEP_TIME
 from API.MARKETPLACES.wb.config import \
     URL_WILDBERRIES_INFO, \
     URL_WILDBERRIES_PRICES, \
     URL_WILDBERRIES_STOCKS_FBO, \
-    URL_WILDBERRIES_STOCKS_FBS
+    URL_WILDBERRIES_STOCKS_FBS, \
+    URL_WILDBERRIES_WAREHOUSES
 
 
 class WildberriesApi:
@@ -40,6 +41,12 @@ class WildberriesApi:
         else:
             logger.error(f'Ошибка в выполнении запроса Статус код:{response.status_code} URL:{url}')
 
+    # --- ФУНКЦИИ WAREHOUSES ---
+    def get_warehouses(self):
+        response = self.get(URL_WILDBERRIES_WAREHOUSES, {}, False)  # stream=False
+        warehouses = [{'warehouse_id': warehouse['id'], 'name': warehouse['name']} for warehouse in response.json()]
+        return warehouses
+
     # --- ФУНКЦИИ STOCKS
     def get_stocks_fbo(self):  # GET /api/v2/stocks (--- функция для сбора остатков FBO ---)
         NUMBER_OF_RECORDS_PER_PAGE = 1000
@@ -48,17 +55,21 @@ class WildberriesApi:
         product_list = []
         while True:
             params = {
-                'skip': count * NUMBER_OF_RECORDS_PER_PAGE,  # cколько записей пропустить (для пагинации)
-                'take': NUMBER_OF_RECORDS_PER_PAGE           # cколько записей выдать (для пагинации)
+                'skip': count * NUMBER_OF_RECORDS_PER_PAGE,
+                'take': NUMBER_OF_RECORDS_PER_PAGE
                     }
             response = self.get(URL_WILDBERRIES_STOCKS_FBO, params, False)  # stream=False
             response = response.json()
             products = response.get('stocks')
             if products:
                 total = response.get('total')
-                product_list = [
+                product_list += [
                     {
                         'warehouse_id': product['warehouseId'],
+                        'warehouse_name': product['warehouseName'],
+                        'product_name': product['name'],
+                        'category': product['subject'],
+                        'barcode': product['barcode'],
                         'offer_id': product['article'],
                         'product_id': str(product['nmId']),
                         'stock_fbo': product['stock'],
@@ -78,7 +89,7 @@ class WildberriesApi:
     # также можно собирать цены --- STOCKS / PRICES ---
     def get_stocks_fbs(self):  # GET /api/v1/supplier/stocks (--- функция для сбора остатков FBS ---)
         params = {
-            'key': self.supplier_api_key,  # оба параметра обязательные
+            'key': self.supplier_api_key,
             'dateFrom': date.today()
         }
         response = self.get(URL_WILDBERRIES_STOCKS_FBS, params, True)  # stream=True
@@ -87,6 +98,10 @@ class WildberriesApi:
         for chunk in chunks:
             product = {
                     'warehouse_id': chunk['warehouse'],
+                    'warehouse_name': chunk['warehouseName'],
+                    'barcode': chunk['barcode'],
+                    'product_name': chunk['subject'],
+                    'product_category': chunk['category'],
                     'offer_id': chunk['supplierArticle'],
                     'product_id': str(chunk['nmId']),
                     'stock_fbo': 0,
@@ -101,7 +116,7 @@ class WildberriesApi:
             yield products
 
     # --- ФУНКЦИИ PRICES
-    def get_prices(self):  # GET /public/api/v1/info (номенклатуры,цены, скидки и промокоды)
+    def get_prices(self):  # GET /public/api/v1/info
         params = {'quantity': 0}  # 2 - товар с нулевым остатком, 1 - с ненулевым остатком, 0 - с любым остатком
         response = self.get(URL_WILDBERRIES_INFO, params, True)  # stream=True
         chunks = iter(response.json())

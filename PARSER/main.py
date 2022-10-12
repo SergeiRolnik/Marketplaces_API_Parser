@@ -29,13 +29,22 @@ def append_cols(products: list, account_id: int, api_id: str):  # добавит
     return products
 
 
-def insert_into_db(table_name: str, products: list):
-    fields = ','.join(list(products[0].keys()))
-    fields = fields.replace('stock_fbo', 'fbo_present')
-    fields = fields.replace('stock_fbs', 'fbs_present')
-    values = ','.join([f'%({value})s' for value in list(products[0].keys())])
-    sql = f'INSERT INTO {table_name} ({fields}) VALUES ({values})'
-    run_sql(sql, products)
+def append_cols_products(products: list, account_id: int, api_id: str):  # добавить account_id, api_id к списку товаров
+    for product in products:
+        product['account_id'] = account_id
+        product['api_id'] = api_id
+    return products
+
+
+def insert_into_db(table_name: str, records: list):
+    if records:
+        fields = ','.join(list(records[0].keys()))
+        fields = fields.replace('reason', 'resason')  # !!! исправить название поля в таблице product_list
+        fields = fields.replace('stock_fbo', 'fbo_present')
+        fields = fields.replace('stock_fbs', 'fbs_present')
+        values = ','.join([f'%({value})s' for value in list(records[0].keys())])
+        sql = f'INSERT INTO {table_name} ({fields}) VALUES ({values})'
+        run_sql(sql, records)
 
 
 # добавить к списку offer_id (для ЯМ и ВБ), на вход список словарей {'product_id':.., 'price': ...}
@@ -50,6 +59,14 @@ def append_offer_ids(products: list) -> list:
     return products
 
 
+def remove_duplicates(warehouses: list) -> list:
+    unique_warehouses = []
+    for warehouse in warehouses:
+        if warehouse not in unique_warehouses:
+            unique_warehouses.append(warehouse)
+    return unique_warehouses
+
+
 def process_account_data(account_id: int):
     sql = 'SELECT mp_id, client_id_api, api_key, campaigns_id FROM account_list WHERE id=%s'
     result = run_sql_account_list(sql, (str(account_id),))
@@ -59,55 +76,128 @@ def process_account_data(account_id: int):
 
     if mp_id == 1:  # -------------------------------------- ОЗОН ----------------------------------------
 
-        # --- ALL PRODUCTS --- (данные для таблицы total_stock)
-        for stocks_chunk in mp_object.get_stocks_info():
+        # --- WAREHOUSES FBS --- !!! проверить почему в данных по складу is_rfbs = false
+        warehouses = mp_object.get_warehouses()  # POST /v1/warehouse/list список складов
+        insert_into_db('wh_table', warehouses)
+        warehouses.clear()
+
+        # --- PRODUCTS ---
+        for products_chunk in mp_object.get_product_list([], []):  # /v2/product/list (список всех товаров)
+            offer_ids = [product['offer_id'] for product in products_chunk]
+            products = mp_object.get_product_info_list(offer_ids, False)  # /v2/product/info/list (подробная информация о товарах по списку offer_id)
+            products = append_cols_products(products, account_id, api_key)
+            insert_into_db('product_list', products)
+
+        # --- ALL STOCKS --- (данные для таблицы total_stock)
+        for stocks_chunk in mp_object.get_stocks_info():  # POST /v3/product/info/stocks
             stocks_chunk = append_cols(stocks_chunk, account_id, api_key)
             insert_into_db('total_stock', stocks_chunk)
 
             # --- STOCKS FBS ---
             offer_ids = [product['offer_id'] for product in stocks_chunk]
-            fbs_skus = mp_object.get_product_info_list(offer_ids)
-
-            products_fbs = mp_object.get_stocks_fbs(fbs_skus)
+            fbs_skus = mp_object.get_product_info_list(offer_ids, True)  # /v2/product/info/list (отбираем товары по списку offer_ids на складах FBS)
+            products_fbs = mp_object.get_stocks_fbs(fbs_skus)  # /v1/product/info/stocks-by-warehouse/fbs
             products_fbs = append_cols(products_fbs, account_id, api_key)
             insert_into_db('stock_by_wh', products_fbs)
 
         # --- STOCKS FBO ---
-        for products_fbo_chunk in mp_object.get_stocks_fbo():
+        for products_fbo_chunk in mp_object.get_stocks_fbo():  # /v1/analytics/stock_on_warehouses
             products_fbo_chunk = append_cols(products_fbo_chunk, account_id, api_key)
             insert_into_db('stock_by_wh', products_fbo_chunk)
 
+            # --- WAREHOUSES FBO ---
+            warehouses_chunk = [
+                {
+                    'warehouse_id': warehouse['warehouse_id'],
+                    'name': warehouse['warehouse_name'],
+                    'wh_type': 'FBO',
+                    'account_id': account_id
+                }
+                for warehouse in products_fbo_chunk]
+            warehouses += remove_duplicates(warehouses_chunk)
+        insert_into_db('wh_table', remove_duplicates(warehouses))
+
         # --- PRICES ---
-        for prices_chunk in mp_object.get_prices():
+        for prices_chunk in mp_object.get_prices():  # POST /v4/product/info/prices
             prices_chunk = append_cols(prices_chunk, account_id, api_key)
             insert_into_db('price_table', prices_chunk)
 
     elif mp_id == 2:  # ------------------------ ЯМ ------------------------------------------------------------
 
+        warehouses = []
         # --- STOCKS ---
-        for shop_skus_chunk in mp_object.get_info():
-            products = mp_object.get_stocks(shop_skus_chunk)
-            products = append_cols(products, account_id, api_key)
-            insert_into_db('stock_by_wh', products)
+        for products_chunk in mp_object.get_info():  # GET /campaigns/{campaignId}/offer-mapping-entries
+            shop_skus_chunk = [product['offer_id'] for product in products_chunk]  # выделяем shopSkus
+            products_chunk = append_cols_products(products_chunk, account_id, api_key)
+            insert_into_db('product_list', products_chunk)
+            products_chunk = mp_object.get_stocks(shop_skus_chunk)  # POST /stats/skus
+            products_chunk = append_cols(products_chunk, account_id, api_key)
+            insert_into_db('stock_by_wh', products_chunk)
+
+            # --- WAREHOUSES (FBY или FBS?) ---
+            warehouses_chunk = [
+                {
+                    'warehouse_id': warehouse['warehouse_id'],
+                    'name': warehouse['warehouse_name'],
+                    'wh_type': 'FBY',  # !!! какой тип склада FBY или FBS?
+                    'account_id': account_id
+                }
+                for warehouse in products_chunk]
+            warehouses += remove_duplicates(warehouses_chunk)
+        insert_into_db('wh_table', remove_duplicates(warehouses))
 
         # --- PRICES ---
-        for prices_chunk in mp_object.get_prices():
-            prices_chunk = append_offer_ids(prices_chunk)  # находим offer_id по product_id в таблице stock_by_wh
+        for prices_chunk in mp_object.get_prices():  # GET /offer-prices
+            prices_chunk = append_offer_ids(prices_chunk)
             prices_chunk = append_cols(prices_chunk, account_id, api_key)
             insert_into_db('price_table', prices_chunk)
 
     elif mp_id == 3:  # ---------------------------------- ВБ --------------------------------------------------
 
+        # --- WAREHOUSES FBO(?) ---
+        warehouses = mp_object.get_warehouses()  # /api/v2/warehouses, список словарей {'warehouse_id':..., 'name': ...}
+        for warehouse in warehouses:             # метод получает только склады FBO?
+            warehouse['wh_type'] = 'FBO'
+            warehouse['account_id'] = account_id
+        insert_into_db('wh_table', warehouses)
+
         # --- STOCKS FBO ---
-        for products_fbo_chunk in mp_object.get_stocks_fbo():
+        warehouses_fbo = []
+        for products_fbo_chunk in mp_object.get_stocks_fbo():  # GET /api/v2/stocks
             products_fbo_chunk = append_cols(products_fbo_chunk, account_id, api_key)
             insert_into_db('stock_by_wh', products_fbo_chunk)
 
-        # --- STOCKS FBS / PRICES FBS (ИСПОЛЬЗУЕТСЯ ОДИН И ТОТ ЖЕ МЕТОД)
-        for products_fbs_chunk in mp_object.get_stocks_fbs():
+            # --- PRODUCTS FBO ---
+            products = [
+                {
+                    'product_id': product['product_id'],
+                    'offer_id': product['offer_id'],
+                    'barcode': product['barcode'],
+                    'category_id': product['category'],
+                    'name': product['product_name']  # !!! возможно загрузить другие поля
+                }
+                for product in products_fbo_chunk]
+            products = append_cols_products(products, account_id, api_key)
+            insert_into_db('product_list', products)
+
+            # --- WAREHOUSES FBO ---
+            warehouses_fbo_chunk = [
+                {
+                    'warehouse_id': product['warehouse_id'],
+                    'name': product['warehouse_name'],
+                    'wh_type': 'FBO',
+                    'account_id': account_id
+                }
+                for product in products_fbo_chunk]
+            warehouses_fbo += remove_duplicates(warehouses_fbo_chunk)
+        insert_into_db('wh_table', remove_duplicates(warehouses_fbo))
+
+        # --- STOCKS & PRICES FBS --- (используется один и тот же метод)
+        warehouses_fbs = []
+        for products_fbs_chunk in mp_object.get_stocks_fbs():   # GET /api/v1/supplier/stocks
 
             # --- STOCKS ---
-            products_fbs_stocks = [
+            stocks_fbs = [
                 {
                     'warehouse_id': product['warehouse_id'],
                     'offer_id': product['offer_id'],
@@ -115,29 +205,51 @@ def process_account_data(account_id: int):
                     'stock_fbo': product['stock_fbo'],
                     'stock_fbs': product['stock_fbs']
                 }
-                for product in products_fbs_chunk
-            ]
-            products_fbs_stocks = append_cols(products_fbs_stocks, account_id, api_key)
-            insert_into_db('stock_by_wh', products_fbs_stocks)
+                for product in products_fbs_chunk]
+            stocks_fbs = append_cols(stocks_fbs, account_id, api_key)
+            insert_into_db('stock_by_wh', stocks_fbs)
 
-            # --- PRICES ---
+            # --- PRODUCTS FBS ---
+            products = [
+                {
+                    'product_id': product['product_id'],
+                    'offer_id': product['offer_id'],
+                    'barcode': product['barcode'],
+                    'category_id': product['product_category'],
+                    'name': product['product_name']  # !!! возможно загрузить другие поля
+                 }
+                for product in products_fbs_chunk]
+            products = append_cols_products(products, account_id, api_key)
+            insert_into_db('product_list', products)
+
+            # --- PRICES FBS ---  !!! дублирует product_id полученные через метод # GET /public/api/v1/info
             prices_fbs = [
                 {
                     'offer_id': product['offer_id'],
                     'product_id': product['product_id'],
                     'price': product['price']
                 }
-                for product in products_fbs_chunk
-            ]
+                for product in products_fbs_chunk]
             prices_fbs = append_cols(prices_fbs, account_id, api_key)
             insert_into_db('price_table', prices_fbs)
 
-        # --- PRICES FBO ---
-        for prices_fbo in mp_object.get_prices():
-            prices_fbo = append_offer_ids(prices_fbo)  # находим offer_id по product_id в таблице stock_by_wh
+            # --- WAREHOUSES FBS ---
+            warehouses_fbs_chunk = [
+                {
+                    'warehouse_id': product['warehouse_id'],
+                    'name': product['warehouse_name'],
+                    'wh_type': 'FBS',
+                    'account_id': account_id
+                }
+                for product in products_fbs_chunk]
+            warehouses_fbs += remove_duplicates(warehouses_fbs_chunk)
+        insert_into_db('wh_table', remove_duplicates(warehouses_fbs))
+
+        # --- PRICES FBO + FBS --- (!!! включает также товары FBS)
+        for prices_fbo in mp_object.get_prices():  # GET /public/api/v1/info
+            # prices_fbo = append_offer_ids(prices_fbo)  # !!! надо придумать как подгружать offer_id по product_id
             prices_fbo = append_cols(prices_fbo, account_id, api_key)
-            if prices_fbo:
-                insert_into_db('price_table', prices_fbo)  # !!! ПРОВЕРИТЬ ПОЧЕМУ НЕ ПОДГРУЖАЮТСЯ offer_id
+            insert_into_db('price_table', prices_fbo)
 
     return {'account_id': account_id, 'result': 'OK'}
 

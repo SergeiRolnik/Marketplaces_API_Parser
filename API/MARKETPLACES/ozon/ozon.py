@@ -31,23 +31,25 @@ class OzonApi:
         return headers
 
     def post(self, url, params):
-        response = requests.post(url=url, headers=self.get_headers(), json=params, timeout=5)
+        response = requests.post(url=url, headers=self.get_headers(), json=params, timeout=10)
         if response.status_code == 200:
             logger.info(f'Запрос выполнен успешно Статус код:{response.status_code} URL:{url}')
             return response.json()
         else:
-            print('response json', response.json())
             logger.error(f'Ошибка в выполнении запроса Статус код:{response.status_code} URL:{url}')
 
     def append_product_id(self, products: list) -> list:
         offer_ids = [product['offer_id'] for product in products]
-        offer_product_ids = self.get_product_list(list(set(offer_ids)), [])
-        offer_product_ids_expanded = []
-        for product in offer_product_ids:
-            for offer_id in offer_ids:
-                if offer_id == product['offer_id']:
-                    offer_product_ids_expanded.append({'offer_id': offer_id, 'product_id': product['product_id']})
-        offer_product_ids = offer_product_ids_expanded
+        unique_offer_ids = list(set(offer_ids))
+        offer_product_ids = []
+        for i in range(0, len(unique_offer_ids), 1000):  # макс. длинна списка для поиска в методе # /v2/product/list
+            offer_ids_chunk = unique_offer_ids[i: i + 1000]
+            offer_product_ids_generator = self.get_product_list(offer_ids_chunk, [])
+            offer_product_ids_chunk = next(offer_product_ids_generator)
+            for product in offer_product_ids_chunk:
+                for offer_id in offer_ids:
+                    if offer_id == product['offer_id']:
+                        offer_product_ids.append({'offer_id': offer_id, 'product_id': product['product_id']})
         # сортировка списков словарей по offer_id
         products = sorted(products, key=lambda item: item['offer_id'])
         offer_product_ids = sorted(offer_product_ids, key=lambda item: item['offer_id'])
@@ -60,7 +62,12 @@ class OzonApi:
 
     def append_offer_id(self, products: list) -> list:
         product_ids = [product['product_id'] for product in products]
-        offer_product_ids = self.get_product_list([], product_ids)
+        offer_product_ids = []
+        for i in range(0, len(product_ids), 1000):  # макс. длинна списка для поиска в методе # /v2/product/list
+            product_ids_chunk = product_ids[i: i + 1000]
+            offer_product_ids_generator = self.get_product_list([], product_ids_chunk)
+            offer_product_ids_chunk = next(offer_product_ids_generator)
+            offer_product_ids += offer_product_ids_chunk
         # сортировка списков словарей по product_id
         products = sorted(products, key=lambda item: item['product_id'])
         offer_product_ids = sorted(offer_product_ids, key=lambda item: item['product_id'])
@@ -73,49 +80,45 @@ class OzonApi:
 
     # --- ФУНКЦИИ STOCKS ---
     def get_stocks_fbo(self) -> list:  # /v1/analytics/stock_on_warehouses
-        # all_products - список [{'offer_id': ... 'product_id': ..., 'stock_fbo': ..., 'stock_fbs': ... }, .... ]
         NUMBER_OF_RECORDS_PER_PAGE = 1000
         products = []
         count = 0
-        total = 0
         while True:
             params = {
                 'limit': NUMBER_OF_RECORDS_PER_PAGE,          # кол-во ответов на странице, по умолчанию 100
                 'offset': count * NUMBER_OF_RECORDS_PER_PAGE  # количество элементов, которое будет пропущено в ответе
             }
             response = self.post(URL_OZON_STOCKS_ON_WAREHOUSES, params)
-            if response and not response.get('code'):
-                warehouses = response.get('wh_items')
-                total = len(response.get('total_items'))
-                for warehouse in warehouses:
+            if response.get('wh_items') and not response.get('code'):
+                for warehouse in response['wh_items']:
                     for product in warehouse['items']:
-                        offer_id = product['offer_id']
                         products.append(
                             {
                                 'warehouse_id': warehouse['id'],
-                                'offer_id': offer_id,
+                                'warehouse_name': warehouse['name'],
+                                'offer_id': product['offer_id'],
                                 'stock_fbo': product['stock']['for_sale'],
                                 'stock_fbs': 0
                             }
                         )
+            else:
+                if products:
+                    products = self.append_product_id(products)
+                yield products
+                break
             time.sleep(SLEEP_TIME)
             count += 1
             if count * NUMBER_OF_RECORDS_PER_PAGE % CHUNK_SIZE == 0:
-                products = self.append_product_id(products)  # добавить к списку product_id
+                products = self.append_product_id(products)
                 yield products
                 products.clear()
-            if total <= count * NUMBER_OF_RECORDS_PER_PAGE:
-                if products:
-                    products = self.append_product_id(products)  # добавить к списку product_id
-                    yield products
-                break
-        # список словарей {'warehouse_id': ..., 'offer_id': ..., 'product_id': ..., 'stock_fbo': ... , 'stock_fbs': ...}
 
     def get_stocks_fbs(self, fbs_skus: list) -> list:  # /v1/product/info/stocks-by-warehouse/fbs
         # получить fbs_sku в ответе методов /v2/product/info (get_product_info) и /v2/product/info/list
+        NUMBER_OF_SEARCH_ENTRIES = 500
         product_list = []
-        for i in range(0, len(fbs_skus), 500):
-            fbs_skus_chunk = fbs_skus[i: i + 500]  # fbs_skus_chunk - части списка fbs_skus по 500 шт.
+        for i in range(0, len(fbs_skus), NUMBER_OF_SEARCH_ENTRIES):
+            fbs_skus_chunk = fbs_skus[i: i + NUMBER_OF_SEARCH_ENTRIES]
             params = {'fbs_sku': fbs_skus_chunk}  # SKU продавца (схемы FBS и rFBS), макс. 500
             response = self.post(URL_OZON_STOCKS_BY_WAREHOUSE_FBS, params)
             if response and not response.get('code'):
@@ -130,9 +133,8 @@ class OzonApi:
                         }
                     )
             time.sleep(SLEEP_TIME)
-        product_list = self.append_offer_id(product_list)  # добавить к списку offer_id
+        product_list = self.append_offer_id(product_list)
         return product_list
-        # список словарей {'warehouse_id': ..., 'offer_id': ..., 'product_id': ..., 'stock_fbo': ..., 'stock_fbs': ...}
 
     def get_stocks_info(self) -> list:  # POST /v3/product/info/stocks (результат попадает в таблицу total_stock)
         NUMBER_OF_RECORDS_PER_PAGE = 1000
@@ -176,7 +178,6 @@ class OzonApi:
                 if product_list:
                     yield product_list
                 break
-                # список словарей {'offer_id': ... , 'product_id': ... , 'stock_fbo': ..., 'stock_fbs': ... }
 
     # --- ФУНКЦИИ PRICES ---
     def get_prices(self) -> list:   # POST /v4/product/info/prices
@@ -213,62 +214,106 @@ class OzonApi:
                 break
 
     # --- ФУНКЦИИ PRODUCT INFO ---
-    def get_product_list(self, offer_ids: list, product_ids: list) -> list:  # /v2/product/list
+    def get_product_list(self, offer_ids: list, product_ids: list) -> list:  # /v2/product/list (Список товаров)
         MAX_INTEGER = 9223372036854775807  # макcимальное значение product_id (если превышает, метод выдает ошибку)
         product_ids = [0 if product > MAX_INTEGER else product for product in product_ids]
         NUMBER_OF_RECORDS_PER_PAGE = 1000
-        NUMBER_OF_SEARCH_ENTRIES = 1000
+        last_id = ''
+        total = 0
+        count = 0
         products = []
-        if offer_ids:
-            filter_list = offer_ids
-        if product_ids:
-            filter_list = product_ids
-        for i in range(0, len(filter_list), NUMBER_OF_SEARCH_ENTRIES):
-            filter_list_chunk = filter_list[i: i + NUMBER_OF_SEARCH_ENTRIES]
-            if offer_ids:
-                filter = {'offer_id': filter_list_chunk, 'product_id': [], 'visibility': 'ALL'}
-            if product_ids:
-                filter = {'offer_id': [], 'product_id': filter_list_chunk, 'visibility': 'ALL'}
-            params = {
-                'filter': filter,
-                'last_id': '',
-                'limit': NUMBER_OF_RECORDS_PER_PAGE
-                    }
+        request_filter = dict()
+        request_filter['offer_id'] = offer_ids
+        request_filter['product_id'] = product_ids
+        request_filter['visibility'] = 'ALL'
+        while True:
+            params = {'filter': request_filter, 'last_id': last_id, 'limit': NUMBER_OF_RECORDS_PER_PAGE}
             response = self.post(URL_OZON_PRODUCTS, params)
             if response and not response.get('code'):
-                products += response['result']['items']
-            time.sleep(SLEEP_TIME)
-        products = [{'product_id': product['product_id'], 'offer_id': product['offer_id']} for product in products]
-        return products  # на выходе список словарей {'product_id': ... , 'offer_id': ...}
+                last_id = response['result']['last_id']
+                total = response['result']['total']
+                products += [{'product_id': product['product_id'], 'offer_id': product['offer_id']}
+                            for product in response['result']['items']]
+                time.sleep(SLEEP_TIME)
+                count += 1
+                if count * NUMBER_OF_RECORDS_PER_PAGE % CHUNK_SIZE == 0:
+                    yield products
+                    products.clear()
+            if total <= count * NUMBER_OF_RECORDS_PER_PAGE:
+                if products:
+                    yield products  # список словарей {'product_id': ... , 'offer_id': ...}
+                break
 
-    def get_product_info(self, product_id: int) -> dict:
-        params = {
-            'offer_id': '',
-            'product_id': product_id,
-            'sku': 0
-                }
-        return self.post(URL_OZON_PRODUCT_INFO, params)['result']
+    def get_product_info(self, product_id: int) -> dict:  # POST /v2/product/info (Информация о товарах)
+        params = {'offer_id': '', 'product_id': product_id, 'sku': 0}
+        response = self.post(URL_OZON_PRODUCT_INFO, params)
+        product = response['result']
+        return product
 
-    def get_product_info_list(self, offer_ids: list) -> list:  # /v2/product/info/list
-        fbs_skus = []
-        for i in range(0, len(offer_ids), 1000):
-            offer_ids_chunk = offer_ids[i: i + 1000]  # offer_ids_chunk - части списка offer_ids по 1000 шт.
-            params = {
-                'offer_id': offer_ids_chunk,  # макс. кол-во товаров: 1000
-                'product_id': [],
-                'sku': []
-                    }
+    def get_product_info_list(self, offer_ids: list, fbs: bool) -> list:  # /v2/product/info/list
+        NUMBER_OF_SEARCH_ENTRIES = 1000                                   # Получить список товаров по идентификаторам
+        products = []
+        for i in range(0, len(offer_ids), NUMBER_OF_SEARCH_ENTRIES):  # макс. кол-во товаров в фильтре - 1000
+            offer_ids_chunk = offer_ids[i: i + NUMBER_OF_SEARCH_ENTRIES]
+            params = {'offer_id': offer_ids_chunk, 'product_id': [], 'sku': []}
             response = self.post(URL_OZON_PRODUCT_INFO_LIST, params)
             if response and not response.get('code'):
                 for product in response['result']['items']:
-                    for item in product['sources']:
-                        if item['source'] == 'fbs' and item['is_enabled']:  # отбираем только fbs_sku
-                            fbs_skus.append(item['sku'])
+                    if fbs:  # --- отбираем только товары на складах FBS
+                        for source in product['sources']:
+                            if source['source'] == 'fbs' and source['is_enabled']:
+                                products.append(source['sku'])
+                    else:    # --- отбираем все товары
+                        fbo_sku, fbs_sku = '', ''
+                        if product.get('sources'):
+                            fbo_sku = list(filter(lambda item: item['source'] == 'fbo', product['sources']))[0]['sku']
+                            fbo_sku = str(fbo_sku)
+                            fbs_sku = list(filter(lambda item: item['source'] == 'fbs', product['sources']))[0]['sku']
+                            fbs_sku = str(fbs_sku)
+                        products.append(
+                            {
+                                'product_id': product['id'],
+                                'name': product['name'],
+                                'offer_id': product['offer_id'],
+                                'barcode': product['barcode'],
+                                'category_id': product['category_id'],
+                                'images': product['images'],
+                                'created_at': product['created_at'],
+                                'vat': product['vat'],
+                                'visible': product['visible'],
+                                'has_price': product['visibility_details']['has_price'],
+                                'has_stock': product['visibility_details']['has_stock'],
+                                'active_product': product['visibility_details']['active_product'],
+                                'reason': str(product['visibility_details']['reasons']),
+                                'price_index': product['price_index'],
+                                'images360': str(product['images360']),
+                                'color_image': product['color_image'],
+                                'primary_image': product['primary_image'],
+                                'fbo_sku': fbo_sku,
+                                'fbs_sku': fbs_sku,
+                            }
+                        )
             time.sleep(SLEEP_TIME)
-        return fbs_skus
+        return products
 
-    def get_warehouses(self) -> list:
-        return self.post(URL_OZON_WAREHOUSES, {})['result']
+    def get_warehouses(self) -> list:  # POST /v1/warehouse/list список складов
+        warehouses = []
+        response = self.post(URL_OZON_WAREHOUSES, {})
+        if response and not response.get('code'):
+            warehouses = response['result']
+            for warehouse in warehouses:
+                warehouse['wh_type'] = None
+                warehouse.pop('status')
+                for key, value in warehouse.items():
+                    if isinstance(value, bool) or isinstance(value, list):
+                        warehouse[key] = str(value)
+                    if key == 'first_mile_type':
+                        warehouse[key] = value['first_mile_type']
+                    if key == 'is_rfbs' and value:
+                        warehouse['wh_type'] = 'FBS'
+                    else:
+                        warehouse['wh_type'] = 'FBO'
+        return warehouses
 
     def update_prices(self, prices: list) -> list:  # POST /v1/product/import/prices
         params = {'prices': prices}

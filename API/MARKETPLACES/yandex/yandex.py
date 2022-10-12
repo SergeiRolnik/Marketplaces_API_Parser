@@ -49,6 +49,7 @@ class YandexMarketApi:
         NUMBER_OF_RECORDS_PER_PAGE = 200
         page_token = ''
         count = 0
+        products = []
         while True:
             params = {
                 'campaignId': self.campaign_id,
@@ -56,21 +57,25 @@ class YandexMarketApi:
                 'page_token': page_token  # идентификатор страницы c результатами, передавать nextPageToken
             }
             response = self.get(self.get_url(URL_YANDEX_INFO), params)
-            if not response or response.get('status') == 'ERROR':
+            if response and response.get('status') != 'ERROR' and page_token:
+                products = [
+                    {
+                        'offer_id': product['offer']['shopSku'],
+                        'product_id': product['mapping']['marketSku'],
+                        'name': product['offer']['name']  # !!! ВОЗМОЖНО ДОБАВИТЬ ПОЛЯ
+                    }
+                    for product in response['result']['offerMappingEntries']]
+                page_token = response['result']['paging'].get('nextPageToken')
+            elif products:
+                yield products
                 break
-            shop_skus = [product['offer']['shopSku'] for product in response['result']['offerMappingEntries']]
-            page_token = response['result']['paging'].get('nextPageToken')
             time.sleep(SLEEP_TIME)
             count += 1
             if count * NUMBER_OF_RECORDS_PER_PAGE % CHUNK_SIZE == 0:
-                yield shop_skus
-                shop_skus.clear()
-            if not page_token:
-                if shop_skus:
-                    yield shop_skus
-                break
+                yield products
+                products.clear()
 
-    def get_stocks(self, shop_skus: list):  # POST /stats/skus (--- остатки по складам FBY ---)
+    def get_stocks(self, shop_skus: list):  # POST /stats/skus (остатки по складам FBY)
         product_list = []
         for i in range(0, len(shop_skus), 500):
             shop_skus_chunk = shop_skus[i: i + 500]  # shop_skus_chunk - части списка skus по 500 шт.
@@ -83,18 +88,20 @@ class YandexMarketApi:
                 products = response['result'].get('shopSkus')
                 for product in products:
                     warehouses = product.get('warehouses')
-                    if warehouses:  # если указаны склады
+                    if warehouses:
                         for warehouse in warehouses:
-                            product_list.append({
-                                'warehouse_id': warehouse['id'],
-                                'offer_id': product['shopSku'],
-                                'product_id': str(product['marketSku']),
-                                'stock_fbo':
-                                    sum(item['count'] for item in warehouse['stocks'] if item['type'] == 'AVAILABLE'),
-                                'stock_fbs': 0  # для ЯМ записываем только остатки FBY
-                            })
+                            product_list.append(
+                                {
+                                    'warehouse_id': warehouse['id'],
+                                    'warehouse_name': warehouse['name'],
+                                    'offer_id': product['shopSku'],
+                                    'product_id': str(product['marketSku']),
+                                    'stock_fbo': sum(item['count'] for item in warehouse['stocks'] if item['type'] == 'AVAILABLE'),
+                                    'stock_fbs': 0  # для ЯМ записываем только остатки FBY
+                                }
+                            )
         return product_list
-        # формат [{'warehouse_id': ..., 'offer_id': ..., 'product_id': ..., 'stock_fbo': ..., 'stock_fbs': ... }, ...]
+        # список словарей {'warehouse_id':..., 'offer_id':..., 'product_id':..., 'stock_fbo':..., 'stock_fbs':... }
 
     # --- ФУНКЦИЯ PRICES ---
     def get_prices(self) -> list:  # GET /offer-prices
