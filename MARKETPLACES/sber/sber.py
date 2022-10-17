@@ -73,12 +73,14 @@ class SberApi():
     def process_mp_response(self, response: dict, account_id: int, products: list):
         return response
 
+
 def main():
     sber = SberApi(SBER_API_KEY)  # токен передается в теле запроса 'data': { 'token':
 
     for product in sber.get_info():
         time.sleep(1)
         pprint(product['offer'], product['offer'])
+
 
 if __name__ == '__main__':
     main()

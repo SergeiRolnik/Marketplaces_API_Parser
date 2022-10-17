@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from loguru import logger
 import time
+from pprint import pprint
 from PARSER.config import CHUNK_SIZE, SLEEP_TIME
 from MARKETPLACES.yandex.config import \
     BASE_URL, \
@@ -13,9 +14,9 @@ from MARKETPLACES.yandex.config import \
 
 
 class YandexMarketApi:
-    def __init__(self, client_id: str, api_key: str, campaign_id: str):
-        self.client_id = client_id
-        self.api_key = api_key
+    def __init__(self, api_key: str, client_id: str, campaign_id: str):
+        self.client_id = client_id  # в таблице account_list client_id_api and api_key поменяны местами
+        self.api_key = api_key      # соответсвенно в __init__ тоже меняем порядок
         self.campaign_id = campaign_id
 
     def get_headers(self) -> dict:
@@ -32,18 +33,36 @@ class YandexMarketApi:
     def get(self, url: str, params: dict):
         response = requests.get(url=url, headers=self.get_headers(), params=params)
         if response.status_code == 200:
-            logger.info(f'Запрос выполнен успешно Статус код:{response.status_code} URL:{url}')
+            # logger.info(f'Запрос выполнен успешно. Статус код:{response.status_code} URL:{url}')
             return response.json()
         else:
-            logger.error(f'Ошибка в выполнении запроса Статус код:{response.status_code} URL:{url}')
+
+            print(response.json())  # --- TESTING ----
+
+            logger.error(f'Ошибка в выполнении запроса. Статус код:{response.status_code} URL:{url}')
 
     def post(self, url: str, params: dict):
         response = requests.post(url=url, headers=self.get_headers(), json=params)
         if response.status_code == 200:
-            logger.info(f'Запрос выполнен успешно Статус код:{response.status_code} URL:{url}')
+            # logger.info(f'Запрос выполнен успешно. Статус код:{response.status_code} URL:{url}')
             return response.json()
         else:
-            logger.error(f'Ошибка в выполнении запроса Статус код:{response.status_code} URL:{url}')
+
+            print(response.json())  # --- TESTING ----
+
+            logger.error(f'Ошибка в выполнении запроса. Статус код:{response.status_code} URL:{url}')
+
+    def get_dict_value(self, dictionary: dict, key1: str, key2: str):
+        try:
+            if key1 and key2:
+                value = dictionary[key1][key2]
+            elif key1 and not key2:
+                value = dictionary[key1]
+            else:
+                value = None
+        except KeyError:
+            value = None
+        return value
 
     def get_info(self) -> list:  # GET /campaigns/{campaignId}/offer-mapping-entries (список товаров)
         NUMBER_OF_RECORDS_PER_PAGE = 200
@@ -57,58 +76,57 @@ class YandexMarketApi:
                 'page_token': page_token  # идентификатор страницы c результатами, передавать nextPageToken
             }
             response = self.get(self.get_url(URL_YANDEX_INFO), params)
-            if response and response.get('status') != 'ERROR' and page_token:
-                products = [
-                    {
-                        'offer_id': product['offer']['shopSku'],
-                        'product_id': product['mapping']['marketSku'],
-                        'name': product['offer']['name']  # !!! ВОЗМОЖНО ДОБАВИТЬ ПОЛЯ
-                    }
-                    for product in response['result']['offerMappingEntries']]
+            if response.get('status') == 'OK':
+                products += [
+                        {
+                            'offer_id': self.get_dict_value(product, 'offer', 'shopSku'),
+                            'product_id': self.get_dict_value(product, 'mapping', 'marketSku'),
+                            'name': self.get_dict_value(product, 'offer', 'name')  # !!! ВОЗМОЖНО ДОБАВИТЬ ПОЛЯ
+                        }
+                        for product in response['result']['offerMappingEntries']
+                ]
                 page_token = response['result']['paging'].get('nextPageToken')
-            elif products:
-                yield products
-                break
             time.sleep(SLEEP_TIME)
             count += 1
             if count * NUMBER_OF_RECORDS_PER_PAGE % CHUNK_SIZE == 0:
                 yield products
                 products.clear()
+            if not page_token:
+                if products:
+                    yield products
+                break
 
     def get_stocks(self, shop_skus: list):  # POST /stats/skus (остатки по складам FBY)
-        product_list = []
+        products = []
         for i in range(0, len(shop_skus), 500):
             shop_skus_chunk = shop_skus[i: i + 500]  # shop_skus_chunk - части списка skus по 500 шт.
             params = {
                 'campaignId': self.campaign_id,
-                'shopSkus': shop_skus_chunk  # список идент. магазина SKU, макс. 500, обяз. параметр, д.б. хотя бы один
+                'shopSkus': shop_skus_chunk  # список идент. магазина SKU, макс. 500, обязательный параметр(!)
             }
             response = self.post(self.get_url(URL_YANDEX_STOCKS), params)
-            if response:
-                products = response['result'].get('shopSkus')
-                for product in products:
-                    warehouses = product.get('warehouses')
-                    if warehouses:
-                        for warehouse in warehouses:
-                            product_list.append(
-                                {
-                                    'warehouse_id': warehouse['id'],
-                                    'warehouse_name': warehouse['name'],
-                                    'offer_id': product['shopSku'],
-                                    'product_id': str(product['marketSku']),
-                                    'stock_fbo': sum(item['count'] for item in warehouse['stocks'] if item['type'] == 'AVAILABLE'),
-                                    'stock_fbs': 0  # для ЯМ записываем только остатки FBY
-                                }
-                            )
-        return product_list
+            if response and response.get('status') == 'OK':
+                for product in response['result']['shopSkus']:
+                    for warehouse in product.get('warehouses', []):
+                        products.append(
+                            {
+                                'warehouse_id': warehouse['id'],
+                                'warehouse_name': warehouse['name'],
+                                'offer_id': product['shopSku'],
+                                'product_id': str(product['marketSku']),
+                                'fbo_present': sum(item['count'] for item in warehouse['stocks'] if item['type'] == 'AVAILABLE'),
+                                'fbs_present': 0  # для ЯМ записываем только остатки FBY
+                            }
+                        )
+        return products
         # список словарей {'warehouse_id':..., 'offer_id':..., 'product_id':..., 'stock_fbo':..., 'stock_fbs':... }
 
     # --- ФУНКЦИЯ PRICES ---
     def get_prices(self) -> list:  # GET /offer-prices
         NUMBER_OF_RECORDS_PER_PAGE = 2000
         page_token = ''
-        product_list = []
         count = 0
+        products = []
         while True:
             params = {
                 'campaignId': self.campaign_id,
@@ -116,23 +134,23 @@ class YandexMarketApi:
                 'limit': NUMBER_OF_RECORDS_PER_PAGE  # кол-во записей, макс. 2000
             }
             response = self.get(self.get_url(URL_YANDEX_SHOW_PRICES), params)
-            if not response or response.get('status') == 'ERROR':
-                break
-            products = response['result']['offers']
-            for product in products:
-                product_list.append({
-                    'product_id': str(product.get('marketSku')),  # без get выскакивают ошибки
-                    'price': product['price'].get('value')   # без get выскакивают ошибки
-                })
-            page_token = response['result']['paging'].get('nextPageToken')
-            count += 1
+            if response.get('status') == 'OK':
+                result = response['result']
+                products += [
+                    {
+                        'product_id': str(product.get('marketSku')),
+                        'price': self.get_dict_value(product, 'price', 'value')
+                    }
+                    for product in result['offers']]
+                page_token = self.get_dict_value(result, 'paging', 'nextPageToken')
             time.sleep(SLEEP_TIME)
+            count += 1
             if count * NUMBER_OF_RECORDS_PER_PAGE % CHUNK_SIZE == 0:
-                yield product_list
-                product_list.clear()
+                yield products
+                products.clear()
             if not page_token:
-                if product_list:
-                    yield product_list
+                if products:
+                    yield products
                 break
 
     def update_prices(self, offers: list) -> list:  # POST /offer-prices/updates

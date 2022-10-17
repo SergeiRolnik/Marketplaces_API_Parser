@@ -28,7 +28,7 @@ class WildberriesApi:
     def get(self, url: str, params: dict, stream: bool):
         response = requests.get(url=url, headers=self.get_headers(), params=params, stream=stream)
         if response.status_code == 200:
-            logger.info(f'Запрос выполнен успешно Статус код:{response.status_code} URL:{url}')
+            # logger.info(f'Запрос выполнен успешно Статус код:{response.status_code} URL:{url}')
             return response
         else:
             logger.error(f'Ошибка в выполнении запроса Статус код:{response.status_code} URL:{url}')
@@ -36,15 +36,22 @@ class WildberriesApi:
     def post(self, url: str, params):
         response = requests.post(url=url, headers=self.get_headers(), json=params)
         if response.status_code == 200:
-            logger.info(f'Запрос выполнен успешно Статус код:{response.status_code} URL:{url}')
+            # logger.info(f'Запрос выполнен успешно Статус код:{response.status_code} URL:{url}')
             return response
         else:
             logger.error(f'Ошибка в выполнении запроса Статус код:{response.status_code} URL:{url}')
 
     # --- ФУНКЦИИ WAREHOUSES ---
     def get_warehouses(self):
+        warehouses = []
         response = self.get(URL_WILDBERRIES_WAREHOUSES, {}, False)  # stream=False
-        warehouses = [{'warehouse_id': warehouse['id'], 'name': warehouse['name']} for warehouse in response.json()]
+        if response:
+            warehouses = [
+                {
+                    'warehouse_id': warehouse['id'],
+                    'name': warehouse['name']
+                }
+                for warehouse in response.json()]
         return warehouses
 
     # --- ФУНКЦИИ STOCKS
@@ -52,38 +59,38 @@ class WildberriesApi:
         NUMBER_OF_RECORDS_PER_PAGE = 1000
         count = 0
         total = 0
-        product_list = []
+        products = []
         while True:
             params = {
                 'skip': count * NUMBER_OF_RECORDS_PER_PAGE,
                 'take': NUMBER_OF_RECORDS_PER_PAGE
                     }
             response = self.get(URL_WILDBERRIES_STOCKS_FBO, params, False)  # stream=False
-            response = response.json()
-            products = response.get('stocks')
-            if products:
-                total = response.get('total')
-                product_list += [
-                    {
-                        'warehouse_id': product['warehouseId'],
-                        'warehouse_name': product['warehouseName'],
-                        'product_name': product['name'],
-                        'category': product['subject'],
-                        'barcode': product['barcode'],
-                        'offer_id': product['article'],
-                        'product_id': str(product['nmId']),
-                        'stock_fbo': product['stock'],
-                        'stock_fbs': 0
-                    }
-                    for product in products]
+            if response:
+                response = response.json()
+                if response.get('stocks'):
+                    total = response.get('total')
+                    products += [
+                        {
+                            'warehouse_id': product['warehouseId'],
+                            'warehouse_name': product['warehouseName'],
+                            'product_name': product['name'],
+                            'category': product['subject'],
+                            'barcode': product['barcode'],
+                            'offer_id': product['article'],
+                            'product_id': str(product['nmId']),
+                            'fbo_present': product['stock'],
+                            'fbs_present': 0
+                        }
+                        for product in response['stocks']]
             count += 1
             time.sleep(SLEEP_TIME)
             if count * NUMBER_OF_RECORDS_PER_PAGE % CHUNK_SIZE == 0:
-                yield product_list
-                product_list.clear()
+                yield products
+                products.clear()
             if total <= count * NUMBER_OF_RECORDS_PER_PAGE:
-                if product_list:
-                    yield product_list
+                if products:
+                    yield products
                 break
 
     # также можно собирать цены --- STOCKS / PRICES ---
@@ -104,8 +111,8 @@ class WildberriesApi:
                     'product_category': chunk['category'],
                     'offer_id': chunk['supplierArticle'],
                     'product_id': str(chunk['nmId']),
-                    'stock_fbo': 0,
-                    'stock_fbs': chunk['quantityFull'],
+                    'fbo_present': 0,
+                    'fbs_present': chunk['quantityFull'],
                     'price': chunk['Price']
                 }
             products.append(product)

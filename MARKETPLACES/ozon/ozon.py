@@ -33,7 +33,7 @@ class OzonApi:
     def post(self, url, params):
         response = requests.post(url=url, headers=self.get_headers(), json=params, timeout=10)
         if response.status_code == 200:
-            logger.info(f'Запрос выполнен успешно Статус код:{response.status_code} URL:{url}')
+            # logger.info(f'Запрос выполнен успешно Статус код:{response.status_code} URL:{url}')
             return response.json()
         else:
             logger.error(f'Ошибка в выполнении запроса Статус код:{response.status_code} URL:{url}')
@@ -89,7 +89,7 @@ class OzonApi:
                 'offset': count * NUMBER_OF_RECORDS_PER_PAGE  # количество элементов, которое будет пропущено в ответе
             }
             response = self.post(URL_OZON_STOCKS_ON_WAREHOUSES, params)
-            if response.get('wh_items') and not response.get('code'):
+            if response:
                 for warehouse in response['wh_items']:
                     for product in warehouse['items']:
                         products.append(
@@ -97,8 +97,8 @@ class OzonApi:
                                 'warehouse_id': warehouse['id'],
                                 'warehouse_name': warehouse['name'],
                                 'offer_id': product['offer_id'],
-                                'stock_fbo': product['stock']['for_sale'],
-                                'stock_fbs': 0
+                                'fbo_present': product['stock']['for_sale'],
+                                'fbs_present': 0
                             }
                         )
             else:
@@ -116,25 +116,23 @@ class OzonApi:
     def get_stocks_fbs(self, fbs_skus: list) -> list:  # /v1/product/info/stocks-by-warehouse/fbs
         # получить fbs_sku в ответе методов /v2/product/info (get_product_info) и /v2/product/info/list
         NUMBER_OF_SEARCH_ENTRIES = 500
-        product_list = []
+        products = []
         for i in range(0, len(fbs_skus), NUMBER_OF_SEARCH_ENTRIES):
             fbs_skus_chunk = fbs_skus[i: i + NUMBER_OF_SEARCH_ENTRIES]
             params = {'fbs_sku': fbs_skus_chunk}  # SKU продавца (схемы FBS и rFBS), макс. 500
             response = self.post(URL_OZON_STOCKS_BY_WAREHOUSE_FBS, params)
-            if response and not response.get('code'):
-                products = response['result']
-                for product in products:
-                    product_list.append(
-                        {
-                            'warehouse_id': product['warehouse_id'],
-                            'product_id': product['product_id'],
-                            'stock_fbo': 0,
-                            'stock_fbs': product['present']
-                        }
-                    )
+            if response:
+                products += [
+                    {
+                        'warehouse_id': product['warehouse_id'],
+                        'product_id': product['product_id'],
+                        'fbo_present': 0,
+                        'fbs_present': product['present']
+                    }
+                    for product in response['result']]
             time.sleep(SLEEP_TIME)
-        product_list = self.append_offer_id(product_list)
-        return product_list
+        products = self.append_offer_id(products)
+        return products
 
     def get_stocks_info(self) -> list:  # POST /v3/product/info/stocks (результат попадает в таблицу total_stock)
         NUMBER_OF_RECORDS_PER_PAGE = 1000
@@ -154,19 +152,19 @@ class OzonApi:
                 last_id = response['result']['last_id']
                 total = response['result']['total']
                 for product in products:
-                    stock_fbo = 0
-                    stock_fbs = 0
+                    fbo_present = 0
+                    fbs_present = 0
                     for stock in product.get('stocks'):
                         if stock['type'] == 'fbo':
-                            stock_fbo = stock['present']
+                            fbo_present = stock['present']
                         if stock['type'] == 'fbs':
-                            stock_fbs = stock['present']
+                            fbs_present = stock['present']
                     product_list.append(
                         {
                             'offer_id': product['offer_id'],
                             'product_id': str(product['product_id']),
-                            'stock_fbo': stock_fbo,
-                            'stock_fbs': stock_fbs
+                            'fbo_present': fbo_present,
+                            'fbs_present': fbs_present
                         }
                     )
             time.sleep(SLEEP_TIME)
@@ -229,11 +227,15 @@ class OzonApi:
         while True:
             params = {'filter': request_filter, 'last_id': last_id, 'limit': NUMBER_OF_RECORDS_PER_PAGE}
             response = self.post(URL_OZON_PRODUCTS, params)
-            if response and not response.get('code'):
+            if response:
                 last_id = response['result']['last_id']
                 total = response['result']['total']
-                products += [{'product_id': product['product_id'], 'offer_id': product['offer_id']}
-                            for product in response['result']['items']]
+                products += [
+                    {
+                        'product_id': product['product_id'],
+                        'offer_id': product['offer_id']
+                     }
+                    for product in response['result']['items']]
                 time.sleep(SLEEP_TIME)
                 count += 1
                 if count * NUMBER_OF_RECORDS_PER_PAGE % CHUNK_SIZE == 0:
@@ -250,14 +252,14 @@ class OzonApi:
         product = response['result']
         return product
 
-    def get_product_info_list(self, offer_ids: list, fbs: bool) -> list:  # /v2/product/info/list
+    def get_product_info_list(self, offer_ids: list, fbs=False) -> list:  # /v2/product/info/list
         NUMBER_OF_SEARCH_ENTRIES = 1000                                   # Получить список товаров по идентификаторам
         products = []
         for i in range(0, len(offer_ids), NUMBER_OF_SEARCH_ENTRIES):  # макс. кол-во товаров в фильтре - 1000
             offer_ids_chunk = offer_ids[i: i + NUMBER_OF_SEARCH_ENTRIES]
             params = {'offer_id': offer_ids_chunk, 'product_id': [], 'sku': []}
             response = self.post(URL_OZON_PRODUCT_INFO_LIST, params)
-            if response and not response.get('code'):
+            if response:
                 for product in response['result']['items']:
                     if fbs:  # --- отбираем только товары на складах FBS
                         for source in product['sources']:
@@ -299,9 +301,8 @@ class OzonApi:
     def get_warehouses(self) -> list:  # POST /v1/warehouse/list список складов
         warehouses = []
         response = self.post(URL_OZON_WAREHOUSES, {})
-        if response and not response.get('code'):
-            warehouses = response['result']
-            for warehouse in warehouses:
+        if response:
+            for warehouse in response['result']:
                 warehouse['wh_type'] = None
                 warehouse.pop('status')
                 for key, value in warehouse.items():
