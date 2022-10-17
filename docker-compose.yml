@@ -3,7 +3,6 @@ version: "3.8"
 services:
   app:
     build: .
-    command: python3 main.py
     environment:
       TZ: Europe/Moscow
       PG_USER: ${PG_USER}
