@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    command: python3 main.py
+    environment:
+      TZ: Europe/Moscow
+      PG_USER: ${PG_USER}
+      PG_PASSWORD: ${PG_PASSWORD}
+      PG_DB: ${PG_DB}
+      PG_HOST: ${PG_HOST}
+      PG_PORT: ${PG_PORT}
+      SSLMODE: ${SSLMODE}
+      TARGET_SESSION_ATTRS: ${TARGET_SESSION_ATTRS}
+
+    command: sh script.sh
+    
