@@ -57,5 +57,5 @@ if os.environ.get('APP_ENV') == 'production':
     sslrootcert={os.environ.get('ROOT_CERT')}
     '''
 
-    SLEEP_TIME = 0  # время между запросами в API маркетплейсов (сек)
+    SLEEP_TIME = 3  # время между запросами в API маркетплейсов (сек)
     TEST_ACCOUNTS = []  # номера аккаунтов для тестирования в таблице account_list в БД market_db, например, [1, 2, 3]

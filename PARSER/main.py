@@ -37,8 +37,7 @@ def insert_into_db(table_name: str, dataset: list, account_id: int, api_id: str,
         values = ','.join([f'%({value})s' for value in actual_fields])
         sql = f'INSERT INTO {table_name} ({fields}) VALUES ({values})'
         run_sql(sql, dataset)
-
-        print(len(dataset), 'records inserted in', table_name, ' / account_id=', account_id)  # --- TESTING ---
+        # print(len(dataset), 'records inserted in', table_name, ' / account_id=', account_id)  # --- TESTING ---
 
 
 # добавить к списку offer_id (для ЯМ и ВБ), на вход список словарей {'product_id':.., 'price': ...}
