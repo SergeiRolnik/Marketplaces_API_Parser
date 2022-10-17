@@ -1,9 +1,12 @@
 import os
-from os.path import join, dirname
+from os.path import join, dirname, exists
 from dotenv import load_dotenv
 
 dotenv_path = join(dirname(__file__), '.env')
-load_dotenv(dotenv_path)
+
+# если файл .env существует подгрузить переменные окружения из него
+if exists(dotenv_path):
+    load_dotenv(dotenv_path)
 
 # --------------------------------------------------------------------------------
 #                        GENERAL SETTINGS
