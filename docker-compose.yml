@@ -13,6 +13,7 @@ services:
       PG_PORT: ${PG_PORT}
       SSLMODE: ${SSLMODE}
       TARGET_SESSION_ATTRS: ${TARGET_SESSION_ATTRS}
+      ROOT_CERT: ${ROOT_CERT}
 
     command: sh script.sh
     
