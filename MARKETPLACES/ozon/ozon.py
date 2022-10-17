@@ -80,7 +80,7 @@ class OzonApi:
 
     # --- ФУНКЦИИ STOCKS ---
     def get_stocks_fbo(self) -> list:  # /v1/analytics/stock_on_warehouses
-        NUMBER_OF_RECORDS_PER_PAGE = 1000
+        NUMBER_OF_RECORDS_PER_PAGE = 100
         products = []
         count = 0
         while True:
@@ -89,7 +89,7 @@ class OzonApi:
                 'offset': count * NUMBER_OF_RECORDS_PER_PAGE  # количество элементов, которое будет пропущено в ответе
             }
             response = self.post(URL_OZON_STOCKS_ON_WAREHOUSES, params)
-            if response:
+            if response.get('wh_items'):
                 for warehouse in response['wh_items']:
                     for product in warehouse['items']:
                         products.append(

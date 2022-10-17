@@ -7,7 +7,7 @@ from loguru import logger
 from itertools import zip_longest
 from db import run_sql, run_sql_account_list, run_sql_get_offer_ids, run_sql_delete, get_table_cols
 from datetime import date
-from config import TEST_ACCOUNTS, DB_TABLES
+from config import TEST_ACCOUNTS, DB_TABLES, PRINT_DB_INSERTS
 
 
 def create_mp_object(mp_id: int, client_id: str, api_key: str, campaign_id: str):
@@ -37,7 +37,9 @@ def insert_into_db(table_name: str, dataset: list, account_id: int, api_id: str,
         values = ','.join([f'%({value})s' for value in actual_fields])
         sql = f'INSERT INTO {table_name} ({fields}) VALUES ({values})'
         run_sql(sql, dataset)
-        # print(len(dataset), 'records inserted in', table_name, ' / account_id=', account_id)  # --- TESTING ---
+
+    if PRINT_DB_INSERTS:
+        print(len(dataset), 'records inserted in', table_name, ' / account_id=', account_id)  # --- TESTING ---
 
 
 # добавить к списку offer_id (для ЯМ и ВБ), на вход список словарей {'product_id':.., 'price': ...}
