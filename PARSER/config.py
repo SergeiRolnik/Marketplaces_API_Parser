@@ -57,5 +57,5 @@ if os.environ.get('APP_ENV') == 'production':
     '''
 
     SLEEP_TIME = 0  # время между запросами в API маркетплейсов (сек)
-    TEST_ACCOUNTS = []  # номера аккаунтов для тестирования в таблице account_list в БД market_db, например, [1, 2, 3]
+    TEST_ACCOUNTS = [160]  # номера аккаунтов для тестирования в таблице account_list (market_db), например, [1, 2, 3]
     PRINT_DB_INSERTS = False  # выводить на печать таблицы в БД и кол-во добавленных записей
