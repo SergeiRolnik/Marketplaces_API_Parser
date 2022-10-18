@@ -5,10 +5,6 @@ WORKDIR ./app
 COPY . .
 RUN chmod 775 script.sh
 
-#ENV PYTHONDONTWRITEBYTECODE 1
-#ENV PYTHONUNBUFFERED 1
-
-
 RUN pip install --upgrade pip && pip install --no-cache-dir --upgrade -r requirements.txt
 
 RUN apt update
@@ -18,10 +14,5 @@ RUN mkdir -p ~/.postgresql && \
     chmod 0600 ~/.postgresql/root.crt
 
 
-RUN apt-get update && apt-get install cron -y
-RUN touch /etc/cron.d/ecomactionslist
-RUN chmod 0644 /etc/cron.d/ecomactionslist
-ADD crontab /etc/cron.d/ecomactionslist
-RUN crontab /etc/cron.d/ecomactionslist
 
 
