@@ -13,6 +13,7 @@ services:
       SSLMODE: ${SSLMODE}
       TARGET_SESSION_ATTRS: ${TARGET_SESSION_ATTRS}
       ROOT_CERT: ${ROOT_CERT}
+      APP_ENV: ${APP_ENV}
 
     command: sh script.sh
     
