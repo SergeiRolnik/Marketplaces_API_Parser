@@ -5,7 +5,7 @@ from MARKETPLACES.yandex.yandex import YandexMarketApi
 from concurrent.futures import ThreadPoolExecutor
 from loguru import logger
 from itertools import zip_longest
-from db import run_sql, run_sql_account_list, run_sql_get_offer_ids, run_sql_delete, get_table_cols
+from PARSER.db import run_sql, run_sql_account_list, run_sql_get_offer_ids, run_sql_delete, get_table_cols
 from datetime import date
 
 
