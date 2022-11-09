@@ -17,7 +17,7 @@ class ConnectionPool(ThreadedConnectionPool):
 
 
 # инициализируем пул соединений к БД master_db (макс. число соединений - кол-во передаваемых в правиле аккаунтов)
-master_db_connection_pool = ConnectionPool(1, 100, DB_DSN)
+db_connection_pool = ConnectionPool(1, 100, DB_DSN)
 
 
 # ОДНА ФУНКЦИЯ ДЛЯ ВСЕХ ЗАПРОСОВ
@@ -29,7 +29,7 @@ def run_sql(sql: str, values: tuple):
         values = tuple(values)
 
     try:
-        connection = master_db_connection_pool.connect_to_pool()
+        connection = db_connection_pool.connect_to_pool()
         connection.autocommit = True
         cursor = connection.cursor()
         cursor.execute(sql, values)
@@ -39,4 +39,47 @@ def run_sql(sql: str, values: tuple):
         logger.error(f'Ошибка {error} при обработке SQL запроса {sql}')
     finally:
         if connection:
-            master_db_connection_pool.disconnect_from_pool(connection)
+            db_connection_pool.disconnect_from_pool(connection)
+
+
+def run_sql_insert_many(sql: str, values: list):
+    try:
+        connection = db_connection_pool.connect_to_pool()
+        connection.autocommit = True
+        cursor = connection.cursor()
+        cursor.executemany(sql, values)
+    except Exception as error:
+        logger.error(f'Ошибка {error} при обработке SQL запроса {sql}')
+    finally:
+        if connection:
+            db_connection_pool.disconnect_from_pool(connection)
+
+
+def get_table_cols(table_name: str):
+    try:
+        connection = db_connection_pool.connect_to_pool()
+        cursor = connection.cursor()
+        cursor.execute(f"SELECT column_name, data_type FROM information_schema.columns WHERE table_name='{table_name}'")
+        result = cursor.fetchall()
+        result = [item[0] for item in result]
+        return result
+    except Exception as error:
+        logger.error(f'Ошибка {error} при обработке SQL запроса {sql}')
+    finally:
+        if connection:
+            db_connection_pool.disconnect_from_pool(connection)
+
+
+def run_sql_get_product_ids(sql: str):
+    try:
+        connection = db_connection_pool.connect_to_pool()
+        cursor = connection.cursor()
+        cursor.execute(sql)
+        column_names = [col[0] for col in cursor.description]
+        result = [dict(zip(column_names, row)) for row in cursor.fetchall()]  # преобразовать в список словарей
+        return result
+    except Exception as error:
+        logger.error(f'Ошибка {error} при обработке SQL запроса {sql}')
+    finally:
+        if connection:
+            db_connection_pool.disconnect_from_pool(connection)

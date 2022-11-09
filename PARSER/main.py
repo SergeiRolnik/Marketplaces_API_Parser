@@ -1,24 +1,25 @@
+from config import TEST_ACCOUNTS, DB_TABLES, PRINT_DB_INSERTS
 from MARKETPLACES.ozon.ozon import OzonApi
 from MARKETPLACES.wb.wb import WildberriesApi
 from MARKETPLACES.yandex.yandex import YandexMarketApi
-from MARKETPLACES.sber.sber import SberApi
-import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
 from loguru import logger
 from itertools import zip_longest
 from db import run_sql, run_sql_account_list, run_sql_get_offer_ids, run_sql_delete, get_table_cols
 from datetime import date
-from config import TEST_ACCOUNTS, DB_TABLES, PRINT_DB_INSERTS
 
 
-def create_mp_object(mp_id: int, client_id: str, api_key: str, campaign_id: str):
-    if mp_id == 1:
-        return OzonApi(client_id, api_key)
-    elif mp_id == 2:
-        return YandexMarketApi(client_id, api_key, campaign_id)
-    elif mp_id == 3:
-        return WildberriesApi(client_id, api_key)
-    elif mp_id == 4:
-        return SberApi(api_key)
+def create_mp_object(account: dict):  # на вход словарь {(account_id, mp_id): [(attribute_id, attribute_value), ...]}
+    mp_id = list(account.keys())[0][1]
+    attribute_values = [item[1] for item in list(account.values())[0]]
+    if mp_id == 1:  # Озон
+        return OzonApi(attribute_values[0], attribute_values[1])
+    if mp_id == 2:  # ЯМ
+        return YandexMarketApi(attribute_values[0], attribute_values[1], attribute_values[2])
+    if mp_id == 3:  # ВБ (FBS)
+        return WildberriesApi('', attribute_values[0])
+    if mp_id == 15:  # ВБ (FBO)
+        return WildberriesApi(attribute_values[0], '')
 
 
 def insert_into_db(table_name: str, dataset: list, account_id: int, api_id: str, add_date=False):
@@ -73,11 +74,12 @@ def delete_duplicate_records_from_db():
         run_sql_delete(sql)
 
 
-def process_account_data(account_id: int):
-    sql = 'SELECT mp_id, client_id_api, api_key, campaigns_id FROM account_list WHERE id=%s'
-    result = run_sql_account_list(sql, (str(account_id),))
-    mp_id, client_id, api_key, campaign_id = result[0]
-    mp_object = create_mp_object(mp_id, client_id, api_key, campaign_id)
+def process_account_data(account: dict):
+    # account - словарь {(account_id, mp_id): [(attribute_id, attribute_value, key_attr), (), ...]}
+    account_id, mp_id = list(account.keys())[0]
+    attrs = list(account.values())[0]
+    api_key = list(filter(lambda x: x[2], attrs))[0][1]
+    mp_object = create_mp_object(account)  # инициализация объекта класса МП
 
     if mp_id == 1:  # -------------------------------------- ОЗОН ----------------------------------------
 
@@ -85,6 +87,8 @@ def process_account_data(account_id: int):
         warehouses = mp_object.get_warehouses()  # POST /v1/warehouse/list список складов
         insert_into_db('wh_table', warehouses, account_id, api_key)
         warehouses.clear()
+
+        # ok = input('Enter any key')  # --- TESTING ---
 
         # --- PRODUCTS ---
         for products_chunk in mp_object.get_product_list([], []):  # /v2/product/list (список всех товаров)
@@ -122,7 +126,7 @@ def process_account_data(account_id: int):
         for prices_chunk in mp_object.get_prices():  # POST /v4/product/info/prices
             insert_into_db('price_table', prices_chunk, account_id, api_key, add_date=True)
 
-    elif mp_id == 2:  # ------------------------ ЯМ ------------------------------------------------------------
+    if mp_id == 2:  # ------------------------ ЯМ ------------------------------------------------------------
 
         warehouses = []
         # --- STOCKS ---
@@ -148,7 +152,59 @@ def process_account_data(account_id: int):
             prices_chunk = append_offer_ids(prices_chunk)
             insert_into_db('price_table', prices_chunk, account_id, api_key, add_date=True)
 
-    elif mp_id == 3:  # ---------------------------------- ВБ --------------------------------------------------
+    if mp_id == 3:  # ---------------------------------- ВБ (FBS) -----------------------------------------------
+
+        # --- STOCKS & PRICES FBS --- (используется один и тот же метод)
+        warehouses_fbs = []
+        for products_fbs_chunk in mp_object.get_stocks_fbs():  # GET /api/v1/supplier/stocks
+
+            # --- STOCKS ---
+            stocks_fbs = [
+                {
+                    'warehouse_id': product['warehouse_id'],
+                    'offer_id': product['offer_id'],
+                    'product_id': product['product_id'],
+                    'fbo_present': product['fbo_present'],
+                    'fbs_present': product['fbs_present']
+                }
+                for product in products_fbs_chunk]
+            insert_into_db('stock_by_wh', stocks_fbs, account_id, api_key, add_date=True)
+
+            # --- PRODUCTS FBS ---
+            products = [
+                {
+                    'product_id': product['product_id'],
+                    'offer_id': product['offer_id'],
+                    'barcode': product['barcode'],
+                    'category_id': product['product_category'],
+                    'name': product['product_name']  # !!! возможно загрузить другие поля
+                }
+                for product in products_fbs_chunk]
+            insert_into_db('product_list', products, account_id, api_key)
+
+            # --- PRICES FBS ---  !!! дублирует product_id полученные через метод # GET /public/api/v1/info
+            prices_fbs = [
+                {
+                    'offer_id': product['offer_id'],
+                    'product_id': product['product_id'],
+                    'price': product['price']
+                }
+                for product in products_fbs_chunk]
+            insert_into_db('price_table', prices_fbs, account_id, api_key, add_date=True)
+
+            # --- WAREHOUSES FBS ---
+            warehouses_fbs_chunk = [
+                {
+                    'warehouse_id': product['warehouse_id'],
+                    'name': product['warehouse_name'],
+                    'wh_type': 'FBS',
+                    'account_id': account_id
+                }
+                for product in products_fbs_chunk]
+            warehouses_fbs += remove_duplicate_warehouses(warehouses_fbs_chunk)
+        insert_into_db('wh_table', remove_duplicate_warehouses(warehouses_fbs), account_id, api_key)
+
+    if mp_id == 15:  # ---------------------------------- ВБ (FBO) -----------------------------------------------
 
         # --- WAREHOUSES FBO(?) ---
         warehouses = mp_object.get_warehouses()  # /api/v2/warehouses, список словарей {'warehouse_id':..., 'name': ...}
@@ -184,56 +240,6 @@ def process_account_data(account_id: int):
             warehouses_fbo += remove_duplicate_warehouses(warehouses_fbo_chunk)
         insert_into_db('wh_table', remove_duplicate_warehouses(warehouses_fbo), account_id, api_key)
 
-        # --- STOCKS & PRICES FBS --- (используется один и тот же метод)
-        warehouses_fbs = []
-        for products_fbs_chunk in mp_object.get_stocks_fbs():   # GET /api/v1/supplier/stocks
-
-            # --- STOCKS ---
-            stocks_fbs = [
-                {
-                    'warehouse_id': product['warehouse_id'],
-                    'offer_id': product['offer_id'],
-                    'product_id': product['product_id'],
-                    'fbo_present': product['fbo_present'],
-                    'fbs_present': product['fbs_present']
-                }
-                for product in products_fbs_chunk]
-            insert_into_db('stock_by_wh', stocks_fbs, account_id, api_key, add_date=True)
-
-            # --- PRODUCTS FBS ---
-            products = [
-                {
-                    'product_id': product['product_id'],
-                    'offer_id': product['offer_id'],
-                    'barcode': product['barcode'],
-                    'category_id': product['product_category'],
-                    'name': product['product_name']  # !!! возможно загрузить другие поля
-                 }
-                for product in products_fbs_chunk]
-            insert_into_db('product_list', products, account_id, api_key)
-
-            # --- PRICES FBS ---  !!! дублирует product_id полученные через метод # GET /public/api/v1/info
-            prices_fbs = [
-                {
-                    'offer_id': product['offer_id'],
-                    'product_id': product['product_id'],
-                    'price': product['price']
-                }
-                for product in products_fbs_chunk]
-            insert_into_db('price_table', prices_fbs, account_id, api_key, add_date=True)
-
-            # --- WAREHOUSES FBS ---
-            warehouses_fbs_chunk = [
-                {
-                    'warehouse_id': product['warehouse_id'],
-                    'name': product['warehouse_name'],
-                    'wh_type': 'FBS',
-                    'account_id': account_id
-                }
-                for product in products_fbs_chunk]
-            warehouses_fbs += remove_duplicate_warehouses(warehouses_fbs_chunk)
-        insert_into_db('wh_table', remove_duplicate_warehouses(warehouses_fbs), account_id, api_key)
-
         # --- PRICES FBO + FBS --- (!!! включает также товары FBS)
         for prices_fbo in mp_object.get_prices():  # GET /public/api/v1/info
             prices_fbo = append_offer_ids(prices_fbo)
@@ -247,31 +253,42 @@ def main():
     logger.add(sink='logfile.log', format="{time} {level} {message}", level="INFO")
     logger.info('Работа скрипта начата')
 
-    sql = 'SELECT id FROM marketplaces_list'
-    result = run_sql_account_list(sql, ())
-    mp_ids = [item[0] for item in result]
-    unique_fields = {  # поля в таблице account_list по которым проводится фильтрация дупликатов
-        1: 'client_id_api, api_key',  # Озон
-        2: 'client_id_api, api_key, campaigns_id',  # ЯМ
-        3: 'client_id_api, api_key'  # ВБ
-    }
-    mp_ids = list(set(mp_ids) & set(list(unique_fields.keys())))  # отбираем только те МП, где указаны уникальные поля
+    sql = 'SELECT id FROM marketplaces_list ORDER BY id'
+    mps = run_sql_account_list(sql, ())
+    mp_ids = [item[0] for item in mps]  # список идентификаторов МП
 
-    accounts = []
-    for mp_id in mp_ids:  # проходим по всем аккаунтам и выбираем только уникальные значение client_id_api, api_key
-        sql = f'SELECT MIN(id) FROM account_list WHERE mp_id={mp_id} GROUP BY {unique_fields[mp_id]}'
-        result = run_sql_account_list(sql, ())
-        mp_accounts = [item[0] for item in result]
-        accounts += mp_accounts
+    futures = []
+    with ThreadPoolExecutor() as executor:
 
-    if TEST_ACCOUNTS:  # список номеров аккаунтов в таблице account_list для тестирования (указать в config.py)
-        accounts = TEST_ACCOUNTS
+        for mp_id in mp_ids:  # цикл по маркетплейсам
+            sql = '''
+            SELECT al.id, al.mp_id, asd.attribute_id, asd.attribute_value, sa.key_attr
+            FROM account_list al
+            JOIN account_service_data asd ON al.id = asd.account_id
+            JOIN service_attr sa on asd.attribute_id = sa.id
+            WHERE al.mp_id = %s
+            ORDER BY al.id, asd.attribute_id
+            '''
+            mp_accounts = run_sql_account_list(sql, (str(mp_id), ))
+            accounts_groupped = {}
+            processed_attr_values = []
 
-    response = []
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        results = [executor.submit(process_account_data, account) for account in accounts]
-        for result in results:
-            response.append(result.result())
+            if TEST_ACCOUNTS:  # список номеров аккаунтов в таблице account_list для тестирования (указать в config.py)
+                mp_accounts = [account for account in mp_accounts if account[0] in TEST_ACCOUNTS]
+
+            for account_id, mp_id, attr_id, attr_value, key_attr in mp_accounts:
+                accounts_groupped.setdefault((account_id, mp_id), []).append((attr_id, attr_value, key_attr))
+
+            for account, attrs in accounts_groupped.items():
+                attr_value = list(filter(lambda x: x[2], attrs))[0][1]
+                if attr_value not in processed_attr_values:
+                    # --- ЗАПУСК МНОГОПОТОЧНОСТИ (обработка аккаунта) ---
+                    future = executor.submit(process_account_data, {account: attrs})
+                    futures.append(future)
+                    processed_attr_values.append(attr_value)
+
+        # accounts - список словарей {(account_id, mp_id): [(attribute_id, attribute_value, key_attr), (), ...]}
+        response = [future.result() for future in futures]
 
     delete_duplicate_records_from_db()  # удалить дупликаты во всех таблицах
     logger.info(f'Работа скрипта завершена.  Номера обработанных аккаунтов {response}')

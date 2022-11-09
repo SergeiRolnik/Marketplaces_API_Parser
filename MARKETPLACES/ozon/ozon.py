@@ -2,7 +2,7 @@ import requests
 import time
 from loguru import logger
 from PARSER.config import CHUNK_SIZE, SLEEP_TIME
-from MARKETPLACES.ozon.config import \
+from .config import \
     URL_OZON_PRODUCTS, \
     URL_OZON_PRODUCT_INFO, \
     URL_OZON_STOCKS, \
@@ -14,6 +14,13 @@ from MARKETPLACES.ozon.config import \
     URL_OZON_PRICES_INFO,\
     URL_OZON_STOCKS_BY_WAREHOUSE_FBS,\
     URL_OZON_PRODUCT_INFO_LIST
+
+
+def change_to_float(var: str):
+    if var == '':
+        return None
+    else:
+        return float(var)
 
 
 class OzonApi:
@@ -199,7 +206,35 @@ class OzonApi:
                     product_list.append({
                                 'offer_id': product['offer_id'],
                                 'product_id': str(product['product_id']),
-                                'price': product['price']['price']  # !!! добавать другие поля, вкл. commissions
+                                # price
+                                'price': change_to_float(product['price']['price']),
+                                'old_price': change_to_float(product['price']['old_price']),
+                                'premium_price': change_to_float(product['price']['premium_price']),
+                                'recommended_price': change_to_float(product['price']['premium_price']),
+                                'retail_price': change_to_float(product['price']['retail_price']),
+                                'vat': change_to_float(product['price']['vat']),
+                                'min_ozon_price': change_to_float(product['price']['min_ozon_price']),
+                                'marketing_price': change_to_float(product['price']['marketing_price']),
+                                'marketing_seller_price': change_to_float(product['price']['marketing_seller_price']),
+                                # price index
+                                'price_index': change_to_float(product['price_index']),
+                                # commisssions
+                                'sales_percent': product['commissions']['sales_percent'],
+                                'fbo_fulfillment_amount': product['commissions']['fbo_fulfillment_amount'],
+                                'fbo_direct_flow_trans_min_amount': product['commissions']['fbo_direct_flow_trans_min_amount'],
+                                'fbo_direct_flow_trans_max_amount': product['commissions']['fbo_direct_flow_trans_max_amount'],
+                                'fbo_deliv_to_customer_amount': product['commissions']['fbo_deliv_to_customer_amount'],
+                                'fbo_return_flow_amount': product['commissions']['fbo_return_flow_amount'],
+                                'fbo_return_flow_trans_min_amount': product['commissions']['fbo_return_flow_trans_min_amount'],
+                                'fbo_return_flow_trans_max_amount': product['commissions']['fbo_return_flow_trans_max_amount'],
+                                'fbs_first_mile_min_amount': product['commissions']['fbs_first_mile_min_amount'],
+                                'fbs_first_mile_max_amount': product['commissions']['fbs_first_mile_max_amount'],
+                                'fbs_direct_flow_trans_min_amount': product['commissions']['fbs_direct_flow_trans_min_amount'],
+                                'fbs_direct_flow_trans_max_amount': product['commissions']['fbs_direct_flow_trans_max_amount'],
+                                'fbs_deliv_to_customer_amount': product['commissions']['fbs_deliv_to_customer_amount'],
+                                'fbs_return_flow_amount': product['commissions']['fbs_return_flow_amount'],
+                                'fbs_return_flow_trans_min_amount': product['commissions']['fbs_return_flow_trans_min_amount'],
+                                'fbs_return_flow_trans_max_amount': product['commissions']['fbs_return_flow_trans_max_amount']
                     })
             time.sleep(SLEEP_TIME)
             count += 1
@@ -316,10 +351,7 @@ class OzonApi:
                         warehouse['wh_type'] = 'FBO'
         return warehouses
 
-    def update_prices(self, prices: list) -> list:  # POST /v1/product/import/prices
-        params = {'prices': prices}
-        return self.post(URL_OZON_PRICES, params)['result']
-
+    # --- ФУНКЦИИ UPDATE (API STOCKS/PRICES) ---
     def update_stocks_fbs(self, stocks: list) -> list:
         params = {'stocks': stocks}  # список объектов {'offer_id': str, 'product_id': int, 'stock': int}
         return self.post(URL_OZON_STOCKS_FBS, params)
@@ -328,6 +360,32 @@ class OzonApi:
         params = {
             'stocks': stocks}  # список объектов {'offer_id': str, 'product_id': int, 'stock': int, 'warehouse_id': int}
         return self.post(URL_OZON_STOCKS, params)
+
+    def update_prices(self, prices: list) -> list:  # POST /v1/product/import/prices
+        NUMBER_OF_SEARCH_ENTRIES = 1000  # за один запрос можно изменить цены для 1000 товаров
+        prices_updated = []
+        for i in range(0, len(prices), NUMBER_OF_SEARCH_ENTRIES):
+            prices_chunk = prices[i: i + NUMBER_OF_SEARCH_ENTRIES]
+            params = {'prices': prices_chunk}
+            response = self.post(URL_OZON_PRICES, params)
+            prices_updated += response['result']
+
+        # {
+        #     "prices": [
+        #         {
+        #             "auto_action_enabled": "UNKNOWN",
+        #             "currency_code": "RUB",
+        #             "min_price": "800",
+        #             "offer_id": "",
+        #             "old_price": "0",
+        #             "price": "1448",
+        #             "product_id": 1386
+        #         }
+        #     ]
+        # }
+
+        return prices_updated
+        # список словарей {"product_id": 1386, "offer_id": "PH8865", "updated": true, "errors": []}
 
     # ПОДГОТОВИТЬ СПИСКИ ДЛЯ ОБНОВЛЕНИЯ ОСТАТКОВ НА ПЛОЩАДКЕ
     def make_update_stocks_list(self, products: list, warehouse_id: str):

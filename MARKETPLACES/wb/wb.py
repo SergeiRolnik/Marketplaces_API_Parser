@@ -1,9 +1,11 @@
 import requests
 from datetime import date
 import time
-# from API.db import run_sql
+from API.db import run_sql
 from loguru import logger
+from itertools import zip_longest
 from PARSER.config import CHUNK_SIZE, SLEEP_TIME
+from API.db import run_sql_get_product_ids
 from MARKETPLACES.wb.config import \
     URL_WILDBERRIES_INFO, \
     URL_WILDBERRIES_PRICES, \
@@ -13,6 +15,7 @@ from MARKETPLACES.wb.config import \
 
 
 class WildberriesApi:
+    # def __init__(self, supplier_api_key: str, api_key: str):
     def __init__(self, api_key: str, supplier_api_key: str):
         self.api_key = api_key                    # API-ключ для доступа к методам /public/api/v1 и /api/v2
         self.supplier_api_key = supplier_api_key  # API-ключ для доступа к методам /api/v1/supplier
@@ -28,7 +31,6 @@ class WildberriesApi:
     def get(self, url: str, params: dict, stream: bool):
         response = requests.get(url=url, headers=self.get_headers(), params=params, stream=stream)
         if response.status_code == 200:
-            # logger.info(f'Запрос выполнен успешно Статус код:{response.status_code} URL:{url}')
             return response
         else:
             logger.error(f'Ошибка в выполнении запроса Статус код:{response.status_code} URL:{url}')
@@ -36,10 +38,18 @@ class WildberriesApi:
     def post(self, url: str, params):
         response = requests.post(url=url, headers=self.get_headers(), json=params)
         if response.status_code == 200:
-            # logger.info(f'Запрос выполнен успешно Статус код:{response.status_code} URL:{url}')
             return response
         else:
             logger.error(f'Ошибка в выполнении запроса Статус код:{response.status_code} URL:{url}')
+
+    def append_product_ids(self, products: list) -> list:
+        offer_ids = [product['offer_id'] for product in products]
+        sql = "SELECT offer_id, product_id FROM product_list WHERE product_id IN (%s)" % str(offer_ids).strip('[]')
+        offer_product_ids = run_sql_get_product_ids(sql)
+        products = sorted(products, key=lambda item: item['offer_id'])
+        offer_product_ids = sorted(offer_product_ids, key=lambda item: item['offer_id'])
+        products = [{**k, **v} for k, v in zip_longest(products, offer_product_ids, fillvalue={'product_id': None})]
+        return products
 
     # --- ФУНКЦИИ WAREHOUSES ---
     def get_warehouses(self):
@@ -100,53 +110,57 @@ class WildberriesApi:
             'dateFrom': date.today()
         }
         response = self.get(URL_WILDBERRIES_STOCKS_FBS, params, True)  # stream=True
-        chunks = iter(response.json())
-        products = []
-        for chunk in chunks:
-            product = {
-                    'warehouse_id': chunk['warehouse'],
-                    'warehouse_name': chunk['warehouseName'],
-                    'barcode': chunk['barcode'],
-                    'product_name': chunk['subject'],
-                    'product_category': chunk['category'],
-                    'offer_id': chunk['supplierArticle'],
-                    'product_id': str(chunk['nmId']),
-                    'fbo_present': 0,
-                    'fbs_present': chunk['quantityFull'],
-                    'price': chunk['Price']
-                }
-            products.append(product)
-            if len(products) % CHUNK_SIZE == 0:
+        if response:
+            chunks = iter(response.json())
+            products = []
+            for chunk in chunks:
+                product = {
+                        'warehouse_id': chunk['warehouse'],
+                        'warehouse_name': chunk['warehouseName'],
+                        'barcode': chunk['barcode'],
+                        'product_name': chunk['subject'],
+                        'product_category': chunk['category'],
+                        'offer_id': chunk['supplierArticle'],
+                        'product_id': str(chunk['nmId']),
+                        'fbo_present': 0,
+                        'fbs_present': chunk['quantityFull'],
+                        'price': chunk['Price']
+                    }
+                products.append(product)
+                if len(products) % CHUNK_SIZE == 0:
+                    yield products
+                    products.clear()
+            if products:
                 yield products
-                products.clear()
-        if products:
-            yield products
 
     # --- ФУНКЦИИ PRICES
     def get_prices(self):  # GET /public/api/v1/info
         params = {'quantity': 0}  # 2 - товар с нулевым остатком, 1 - с ненулевым остатком, 0 - с любым остатком
         response = self.get(URL_WILDBERRIES_INFO, params, True)  # stream=True
-        chunks = iter(response.json())
-        products = []
-        for chunk in chunks:
-            product = {
-                    'product_id': str(chunk.get('nmId')),
-                    'price': chunk.get('price')
-                }
-            products.append(product)
-            if len(products) % CHUNK_SIZE == 0:
-                yield products
-                products.clear()
-        if products:
-            yield products  # список словарей {'product_id': ...., 'price': ....}
+        if response:
+            chunks = iter(response.json())
+            products = []
+            for chunk in chunks:
+                product = {
+                        'product_id': str(chunk.get('nmId')),
+                        'price': chunk.get('price')
+                    }
+                products.append(product)
+                if len(products) % CHUNK_SIZE == 0:
+                    yield products
+                    products.clear()
+            if products:
+                yield products  # список словарей {'product_id': ...., 'price': ....}
 
-    # --- ФУНКЦИИ UPDATE (API)
-    def update_stocks(self, stocks: list):  # POST /api/v2/stocks (обновление остатков)
+    # --- ФУНКЦИИ UPDATE (API STOCKS/PRICES) ---
+    def update_stocks(self, stocks: list):  # POST /api/v2/stocks
         # stocks - список словарей типа {'barcode': str, 'stock': int, 'warehouseId': int}
         return self.post(URL_WILDBERRIES_STOCKS_FBO, stocks).json()
 
-    def update_prices(self, prices: list):  # POST /public/api/v1/prices (обновление цен)
-        # prices - список словарей типа {'nmId': int, 'price': int}
+    def update_prices(self, prices: list):  # POST /public/api/v1/prices
+        # на вход список словарей {'offer_id':..., 'price':...}
+        prices = self.append_product_ids(prices)  # на выходе список словарей {'product_id':..., 'offer_id':..., 'price':...}
+        prices = [{'nmId': product['product_id'], 'price': product['price']} for product in prices]
         return self.post(URL_WILDBERRIES_PRICES, prices).json()
 
     # ПОДГОТОВИТЬ СПИСКИ ДЛЯ ОБНОВЛЕНИЯ ОСТАТКОВ НА ПЛОЩАДКЕ

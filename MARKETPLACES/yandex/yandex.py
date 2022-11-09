@@ -4,7 +4,9 @@ from datetime import datetime
 from loguru import logger
 import time
 from pprint import pprint
+from itertools import zip_longest
 from PARSER.config import CHUNK_SIZE, SLEEP_TIME
+from API.db import run_sql_get_product_ids
 from MARKETPLACES.yandex.config import \
     BASE_URL, \
     URL_YANDEX_INFO, \
@@ -14,9 +16,10 @@ from MARKETPLACES.yandex.config import \
 
 
 class YandexMarketApi:
-    def __init__(self, api_key: str, client_id: str, campaign_id: str):
-        self.client_id = client_id  # в таблице account_list client_id_api and api_key поменяны местами
-        self.api_key = api_key      # соответсвенно в __init__ тоже меняем порядок
+    def __init__(self, api_key: str, client_id: str, campaign_id: str):  # !!! ПРОВЕРИТЬ ПОСЛЕДОВАТЕЛЬНОСТЬ В БД
+    # def __init__(self, client_id: str, api_key: str, campaign_id: str):
+        self.client_id = client_id
+        self.api_key = api_key
         self.campaign_id = campaign_id
 
     def get_headers(self) -> dict:
@@ -33,24 +36,25 @@ class YandexMarketApi:
     def get(self, url: str, params: dict):
         response = requests.get(url=url, headers=self.get_headers(), params=params)
         if response.status_code == 200:
-            # logger.info(f'Запрос выполнен успешно. Статус код:{response.status_code} URL:{url}')
             return response.json()
         else:
-
-            print(response.json())  # --- TESTING ----
-
             logger.error(f'Ошибка в выполнении запроса. Статус код:{response.status_code} URL:{url}')
 
     def post(self, url: str, params: dict):
         response = requests.post(url=url, headers=self.get_headers(), json=params)
         if response.status_code == 200:
-            # logger.info(f'Запрос выполнен успешно. Статус код:{response.status_code} URL:{url}')
             return response.json()
         else:
-
-            print(response.json())  # --- TESTING ----
-
             logger.error(f'Ошибка в выполнении запроса. Статус код:{response.status_code} URL:{url}')
+
+    def append_product_ids(self, products: list) -> list:
+        offer_ids = [product['offer_id'] for product in products]
+        sql = "SELECT offer_id, product_id FROM product_list WHERE product_id IN (%s)" % str(offer_ids).strip('[]')
+        offer_product_ids = run_sql_get_product_ids(sql)
+        products = sorted(products, key=lambda item: item['offer_id'])
+        offer_product_ids = sorted(offer_product_ids, key=lambda item: item['offer_id'])
+        products = [{**k, **v} for k, v in zip_longest(products, offer_product_ids, fillvalue={'product_id': None})]
+        return products
 
     def get_dict_value(self, dictionary: dict, key1: str, key2: str):
         try:
@@ -153,8 +157,23 @@ class YandexMarketApi:
                     yield products
                 break
 
-    def update_prices(self, offers: list) -> list:  # POST /offer-prices/updates
-        params = {'offers': offers}
+    # --- ФУНКЦИИ UPDATE (API STOCKS/PRICES) ---
+    def update_prices(self, prices: list) -> list:  # POST /offer-prices/updates
+        prices = self.append_product_ids(prices)
+        products = []
+        for product in prices:
+            products.append(
+                {
+                    'marketSku': product['product_id'],
+                    'price': {
+                        'currencyId': 'RUR',
+                        'value': product['price'],
+                        # 'discountBase': product['price'] * 1.1,
+                        # 'vat': 7
+                        }
+                }
+            )
+        params = {'offers': products}
         return self.post(self.get_url(URL_YANDEX_PRICES), params)
 
     def make_update_stocks_list(self, products: list, warehouse_id: str):

@@ -12,13 +12,13 @@ Content-Type: application/json
 // ВЫСЛАТЬ ОСТАТКИ ДЛЯ ЗАПИСИ В БД
 // account_id: номер аккаунта клиента (не обязательный параметр)
 // warehouse_id: номер склада-источника
-POST http://api.ecomru.ru:80/stock_price/stocks
+POST http://localhost:5000/stocks
 // POST http://localhost:5000/stocks
 Content-Type: application/json
 
 {"data":
   {
-    "account_id": 105,
+    "account_id": 1,
     "warehouse_id": 999,
     "products":
       [
@@ -40,6 +40,35 @@ Content-Type: application/json
 
 
 ###
+// ВЫСЛАТЬ ЦЕНЫ ДЛЯ ЗАПИСИ В БД
+// account_id: номер аккаунта клиента (не обязательный параметр)
+POST http://localhost:5000/prices
+// POST http://localhost:5000/stocks
+Content-Type: application/json
+
+{"data":
+  {
+    "account_id": 1,
+    "products":
+      [
+        {
+          "offer_id": "S18DS95",
+          "price": 50
+        },
+        {
+          "offer_id": "S18DS66",
+          "price": 100
+        },
+        {
+          "offer_id": "SS19K10_M",
+          "price": 200
+        }
+      ]
+  }
+}
+
+
+###
 // СОЗДАТЬ ПРАВИЛО
 // client_id: номер клиента
 // test categories: "17032630", "17033671"
@@ -49,6 +78,7 @@ Content-Type: application/json
 {"data":
   {
     "client_id": 2,
+    "warehouse_id": 1001,
     "filters":
     {
       "categories": ["17032630"],
@@ -78,6 +108,28 @@ Content-Type: application/json
   }
 }
 
+
+###
+POST http://localhost:5000/rules
+Content-Type: application/json
+
+{"data":
+  {
+    "account_id": 2,
+    "filters":
+    {
+      "categories": ["17032630"],
+      "brands": []
+    },
+    "actions":
+    {
+      "set_prices_at": 900,
+      "conditions": {"max_price": 1000}
+    }
+  }
+}
+
+
 ###
 // ПРИНУДИТЕЛЬНО ПЕРЕДАТЬ ОСТАТКИ НА ПЛОЩАДКИ
 // warehouse_id: номер склада-источника
@@ -87,7 +139,21 @@ Content-Type: application/json
 
 {"data":
   {
-    "warehouse_id": 999,
+    "client_id": 2,
+    "rule_id": 18
+  }
+}
+
+
+###
+// ПРИНУДИТЕЛЬНО ПЕРЕДАТЬ ЦЕНЫ НА ПЛОЩАДКИ
+// rule_id: порядковый номер заполненного правила
+POST http://localhost:5000/send_prices
+Content-Type: application/json
+
+{"data":
+  {
+    "client_id": 2,
     "rule_id": 18
   }
 }
