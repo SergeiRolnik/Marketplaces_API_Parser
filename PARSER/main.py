@@ -1,4 +1,4 @@
-from config import TEST_ACCOUNTS, DB_TABLES, PRINT_DB_INSERTS
+from PARSER.config import TEST_ACCOUNTS, DB_TABLES, PRINT_DB_INSERTS
 from MARKETPLACES.ozon.ozon import OzonApi
 from MARKETPLACES.wb.wb import WildberriesApi
 from MARKETPLACES.yandex.yandex import YandexMarketApi

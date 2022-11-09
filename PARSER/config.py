@@ -10,6 +10,9 @@ if exists(dotenv_path):
 
 APP_ENV = os.environ.get('APP_ENV')
 
+print(APP_ENV)
+
+
 # --------------------------------------------------------------------------------
 #                        GENERAL SETTINGS
 # --------------------------------------------------------------------------------
@@ -40,6 +43,27 @@ if APP_ENV == 'development':
     # TEST_ACCOUNTS = [1, 3, 12]  # номера аккаунтов для тестирования в локальной таблице account_list
     # 1 - Озон, 13, 14 - ЯМ, 3, 5 - ВБ
     TEST_ACCOUNTS = [3, 5]
+    PRINT_DB_INSERTS = True  # выводить на печать таблицы в БД и кол-во добавленных записей
+
+# --------------------------------------------------------------------------------
+#                            TESTING SETTINGS (заполнение таблиц на сервере с локального компьютера)
+# --------------------------------------------------------------------------------
+if APP_ENV == 'testing':
+
+    # параметры подключения к market_db
+    DB_DSN = f'''
+    host={os.environ.get('PG_HOST')}
+    port={os.environ.get('PG_PORT')}
+    dbname={os.environ.get('PG_DB')}
+    user={os.environ.get('PG_USER')}
+    password={os.environ.get('PG_PASSWORD')}
+    target_session_attrs={os.environ.get('TARGET_SESSION_ATTRS')}
+    sslmode={os.environ.get('SSLMODE')}
+    sslrootcert={os.environ.get('ROOT_CERT')}
+    '''
+
+    SLEEP_TIME = 0  # время между запросами в API маркетплейсов (сек)
+    TEST_ACCOUNTS = [160]  # номера аккаунтов для тестирования в таблице account_list (market_db), например, [1, 2, 3]
     PRINT_DB_INSERTS = True  # выводить на печать таблицы в БД и кол-во добавленных записей
 
 # --------------------------------------------------------------------------------
