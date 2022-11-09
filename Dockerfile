@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM python:3
 
-WORKDIR ./app
+#WORKDIR ./app
 COPY . .
 RUN chmod 775 script.sh
 
