@@ -9,27 +9,12 @@ if exists(dotenv_path):
     load_dotenv(dotenv_path)
 
 APP_ENV = os.environ.get('APP_ENV')
-
-print(APP_ENV)
-
-
-# --------------------------------------------------------------------------------
-#                        GENERAL SETTINGS
-# --------------------------------------------------------------------------------
-
-DB_TABLES = [  # названия таблиц в БД и уникальные поля для удаления дупликатов
-    {'table_name': 'total_stock', 'partition': 'product_id, date'},
-    {'table_name': 'price_table', 'partition': 'product_id, date'},
-    {'table_name': 'stock_by_wh', 'partition': 'product_id, warehouse_id, date'},
-    {'table_name': 'product_list', 'partition': 'product_id, api_id'},
-    {'table_name': 'wh_table', 'partition': 'warehouse_id, api_id'}
-]
-
-CHUNK_SIZE = 5000  # маскимальный размер списка для оптимизации оперативной памяти
+MAX_NUM_OF_CONNECTIONS = 8  # максимально число соединений в пуле
 
 # --------------------------------------------------------------------------------
 #                        DEVELOPMENT SETTINGS
 # --------------------------------------------------------------------------------
+
 if APP_ENV == 'development':
 
     # параметры подключения к локальной БД
@@ -39,15 +24,10 @@ if APP_ENV == 'development':
     DB_NAME = os.environ.get('PG_DB')
     DB_DSN = f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_SERVER}/{DB_NAME}'
 
-    SLEEP_TIME = 0  # время между запросами в API маркетплейсов (сек)
-    # TEST_ACCOUNTS = [1, 3, 12]  # номера аккаунтов для тестирования в локальной таблице account_list
-    # 1 - Озон, 13, 14 - ЯМ, 3, 5 - ВБ
-    TEST_ACCOUNTS = [3, 5]
-    PRINT_DB_INSERTS = True  # выводить на печать таблицы в БД и кол-во добавленных записей
-
 # --------------------------------------------------------------------------------
 #                            TESTING SETTINGS (заполнение таблиц на сервере с локального компьютера)
 # --------------------------------------------------------------------------------
+
 if APP_ENV == 'testing':
 
     # параметры подключения к market_db
@@ -62,13 +42,10 @@ if APP_ENV == 'testing':
     sslrootcert={os.environ.get('ROOT_CERT')}
     '''
 
-    SLEEP_TIME = 0  # время между запросами в API маркетплейсов (сек)
-    TEST_ACCOUNTS = [160]  # номера аккаунтов для тестирования в таблице account_list (market_db), например, [1, 2, 3]
-    PRINT_DB_INSERTS = True  # выводить на печать таблицы в БД и кол-во добавленных записей
-
 # --------------------------------------------------------------------------------
 #                            PRODUCTION SETTINGS
 # --------------------------------------------------------------------------------
+
 if APP_ENV == 'production':
 
     # параметры подключения к market_db
@@ -82,7 +59,3 @@ if APP_ENV == 'production':
     sslmode={os.environ.get('SSLMODE')}
     sslrootcert={os.environ.get('ROOT_CERT')}
     '''
-
-    SLEEP_TIME = 0  # время между запросами в API маркетплейсов (сек)
-    TEST_ACCOUNTS = [160]  # номера аккаунтов для тестирования в таблице account_list (market_db), например, [1, 2, 3]
-    PRINT_DB_INSERTS = False  # выводить на печать таблицы в БД и кол-во добавленных записей

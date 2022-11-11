@@ -1,11 +1,10 @@
 import requests
 from datetime import date
 import time
-from API.db import run_sql
 from loguru import logger
 from itertools import zip_longest
 from PARSER.config import CHUNK_SIZE, SLEEP_TIME
-from API.db import run_sql_get_product_ids
+from shared.db import run_sql_get_product_ids, run_sql, run_sql_api
 from MARKETPLACES.wb.config import \
     URL_WILDBERRIES_INFO, \
     URL_WILDBERRIES_PRICES, \
@@ -42,7 +41,7 @@ class WildberriesApi:
         else:
             logger.error(f'Ошибка в выполнении запроса Статус код:{response.status_code} URL:{url}')
 
-    def append_product_ids(self, products: list) -> list:
+    def append_product_ids(self, products: list) -> list:  # ИСПОЛЬЗУЕТСЯ ТОЛЬКО ДЛЯ update_prices
         offer_ids = [product['offer_id'] for product in products]
         sql = "SELECT offer_id, product_id FROM product_list WHERE product_id IN (%s)" % str(offer_ids).strip('[]')
         offer_product_ids = run_sql_get_product_ids(sql)
@@ -171,7 +170,7 @@ class WildberriesApi:
             stock = product['stock']
             # обращение к БД, чтобы по id найти barcode (возможно, нужно обратиться к соотв. методу WB)
             sql = 'SELECT barcode FROM product_list WHERE offer_id=%s'
-            result = run_sql(sql, (offer_id, ))
+            result = run_sql_api(sql, (offer_id, ))
             barcode = result[0][0]
             update_stocks_list.append({
                 'barcode': barcode,

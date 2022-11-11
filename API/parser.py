@@ -4,7 +4,7 @@ from MARKETPLACES.ozon.ozon import OzonApi
 from MARKETPLACES.wb.wb import WildberriesApi
 from MARKETPLACES.yandex.yandex import YandexMarketApi
 from MARKETPLACES.sber.sber import SberApi
-from API.db import run_sql
+from shared.db import run_sql_api
 
 logger.remove()
 logger.add(sink='API/logfile.log', format="{time} {level} {message}", level="INFO")
@@ -19,7 +19,7 @@ def apply_filter(products: list, filters: dict):
     if categories:
         s_string = str(len(categories) * '%s,')[0:-1]
         sql = 'SELECT offer_id FROM product_list WHERE category_id IN (' + s_string + ')'
-        result = run_sql(sql, tuple(categories))
+        result = run_sql_api(sql, tuple(categories))
         products_in_categories = list(sum(result, ()))  # преобразеум список кортежей в список
         filtered_products = [product for product in products if product['offer_id'] in products_in_categories]
 
@@ -87,7 +87,7 @@ def process_account_data(account: dict):
 
     # из БД master_db по account_id получаем mp_id, client_id, api_key, campaign_id
     sql = 'SELECT mp_id, client_id_api, api_key, campaigns_id FROM account_list WHERE id=%s'
-    result = run_sql(sql, (str(account_id), ))
+    result = run_sql_api(sql, (str(account_id), ))
     mp_id, client_id, api_key, campaign_id = result[0]
 
     # инициализируем объект соотв. класса для обращения в API площадки
@@ -106,7 +106,7 @@ def process_account_data(account: dict):
         response = mp_object.process_mp_response(mp_response, account_id, products)
 
     sql = 'SELECT mp_name FROM marketplaces_list WHERE id=%s'
-    result = run_sql(sql, (str(mp_id), ))
+    result = run_sql_api(sql, (str(mp_id), ))
     mp_name = result[0][0]
 
     return {'marketplace': mp_name, 'response': response}
@@ -116,7 +116,7 @@ def main():
 
     # достать все необработанные правила из БД (таблица stock_rules)
     sql = 'SELECT rule FROM stock_rules WHERE processed=False'
-    result = run_sql(sql, tuple())
+    result = run_sql_api(sql, tuple())
     rules = result[0]
 
     if rules: # если в таблице stock_rules есть необработанные правила
@@ -130,7 +130,7 @@ def main():
 
             # достать из БД (таблица stock_by_wh) все товары по указанному warehouse_id (склад-источник)
             sql = 'SELECT offer_id, fbo_present FROM stock_by_wh WHERE warehouse_id=%s'
-            products = run_sql(sql, (warehouse_id, ))  # products - список кортежей [(offer_id, stock), ..... ]
+            products = run_sql_api(sql, (warehouse_id, ))  # products - список кортежей [(offer_id, stock), ..... ]
             # преобразовать список кортежей в список словарей (для удобства обработки)
             products = [{'offer_id': product[0], 'stock': int(product[1])} for product in products]
 
@@ -155,7 +155,7 @@ def main():
 
             # пометить правило как обработанное
             sql = 'UPDATE stock_rules SET processed=True WHERE id=%s'
-            result = run_sql(sql, (rule_id, ))
+            result = run_sql_api(sql, (rule_id, ))
 
             logger.info(f'Правило {rule_id} успешно обработано') # возможно стоит записать в лог также респонсы МП
 

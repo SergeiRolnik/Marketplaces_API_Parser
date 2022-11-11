@@ -10,7 +10,8 @@ from MARKETPLACES.ozon.ozon import OzonApi
 from MARKETPLACES.wb.wb import WildberriesApi
 from MARKETPLACES.yandex.yandex import YandexMarketApi
 from MARKETPLACES.sber.sber import SberApi
-from API.db import run_sql, run_sql_insert_many, get_table_cols
+from shared.db import run_sql_api, run_sql_insert_many, get_table_cols
+from shared.config import APP_ENV
 from API.config import MAX_NUMBER_OF_PRODUCTS, NUMBER_OF_PRODUCTS_TO_PROCESS, PRINT_DB_INSERTS
 
 logger.remove()
@@ -38,7 +39,7 @@ def apply_filter(products: list, filters: dict) -> list:
     if categories:
         s_string = str(len(categories) * '%s,')[0:-1]
         sql = 'SELECT offer_id FROM product_list WHERE category_id IN (' + s_string + ')'
-        result = run_sql(sql, tuple(categories))
+        result = run_sql_api(sql, tuple(categories))
         products_in_categories = list(sum(result, ()))  # преобразеум список кортежей в список
         products = [product for product in products if product['offer_id'] in products_in_categories]
     elif brands:
@@ -153,7 +154,7 @@ def map_offer_ids(account: dict) -> list:
     if 'stocks' in account.keys():
         products = account['stocks']
     sql = 'SELECT supplier_offer_id, mp_offer_id FROM mapping_offers WHERE account_id=%s'
-    mappings = run_sql(sql, (str(account_id), ))
+    mappings = run_sql_api(sql, (str(account_id), ))
     mappings = {mapping[0]: mapping[1] for mapping in mappings}
     df = pd.DataFrame.from_dict(products)
     df['offer_id'] = df['offer_id'].map(mappings)
@@ -173,7 +174,7 @@ def process_account_data(account: dict):
 
     # из БД (account_list) по account_id получаем mp_id, client_id, api_key, campaign_id
     sql = 'SELECT mp_id, client_id_api, api_key, campaigns_id FROM account_list WHERE id=%s'
-    result = run_sql(sql, (str(account_id), ))
+    result = run_sql_api(sql, (str(account_id), ))
     mp_id, client_id, api_key, campaign_id = result[0]
 
     # инициализируем объект соотв. класса для обращения в API площадки
@@ -198,7 +199,7 @@ def process_account_data(account: dict):
         response = mp_object.process_mp_response(mp_response, account_id, account['prices'])
 
     sql = 'SELECT mp_name FROM marketplaces_list WHERE id=%s'
-    result = run_sql(sql, (str(mp_id), ))
+    result = run_sql_api(sql, (str(mp_id), ))
     mp_name = result[0][0]
 
     return {'marketplace': mp_name, 'response': response}
@@ -220,7 +221,7 @@ class AddStocksToDB(Resource):
         account_id = data['account_id']
         warehouse_id = str(data['warehouse_id'])
         products = data['products']
-        api_id = run_sql('SELECT api_key FROM account_list WHERE id=%s', (str(account_id),))[0][0]
+        api_id = run_sql_api('SELECT api_key FROM account_list WHERE id=%s', (str(account_id),))[0][0]
         insert_into_db('stock_by_wh', products, account_id, warehouse_id, api_id, add_date=True)
         return {'message': f'В базе данных обновлены остатки {len(products)} товаров'}
 
@@ -236,7 +237,7 @@ class AddPricesToDB(Resource):
             abort(validation_result['code'], validation_result['error_message'])
         account_id = data['account_id']
         products = data['products']
-        api_id = run_sql('SELECT api_key FROM account_list WHERE id=%s', (str(account_id), ))[0][0]
+        api_id = run_sql_api('SELECT api_key FROM account_list WHERE id=%s', (str(account_id), ))[0][0]
         insert_into_db('price_table', products, account_id, api_id, add_date=True)
         return {'message': f'В базе данных обновлены цены {len(products)} товаров'}
 
@@ -252,7 +253,7 @@ class CreateStockRule(Resource):
         rule = {"filters": filters, "actions": actions}
         # добавить правило в БД
         sql = 'INSERT INTO stock_rules (client_id, rule) VALUES (%s, %s) RETURNING id'
-        result = run_sql(sql, (client_id, rule))
+        result = run_sql_api(sql, (client_id, rule))
         rule_id = result[0][0]
         return {'message': f'Правило добавлено. rule_id={rule_id}'}
 
@@ -268,7 +269,7 @@ class CreatePriceRule(Resource):  # --- ПРОТЕСТИТЬ ---
         rule = {"filters": filters, "actions": actions}
         # добавить правило в БД
         sql = 'INSERT INTO price_rules (client_id, rule) VALUES (%s, %s) RETURNING id'
-        result = run_sql(sql, (client_id, rule))
+        result = run_sql_api(sql, (client_id, rule))
         rule_id = result[0][0]
         return {'message': f'Правило добавлено. rule_id={rule_id}'}
 
@@ -284,7 +285,7 @@ class SendStocksToMarketplaces(Resource):
 
         # проверить есть ли такое правило в таблице stock_rules для данного account_id
         sql = 'SELECT rule FROM stock_rules WHERE id=%s AND account_id=%s'
-        result = run_sql(sql, (str(rule_id), str(account_id), ))
+        result = run_sql_api(sql, (str(rule_id), str(account_id), ))
         if not result:
             abort(400, 'Правила с таким id не существует')
         rule = result[0][0]
@@ -296,7 +297,7 @@ class SendStocksToMarketplaces(Resource):
         SELECT account_id, warehouse_id, offer_id, fbo_present 
         FROM stock_by_wh WHERE account_id=%s AND warehouse_id=%s
         '''
-        stocks = run_sql(sql, (account_id, warehouse_id, ))
+        stocks = run_sql_api(sql, (account_id, warehouse_id, ))
         # stocks - список кортежей (account_id, warehouse_id, offer_id, stock)
         stocks = [
             {
@@ -338,20 +339,20 @@ class SendPricesToMarketplaces(Resource):
 
         # проверить есть ли такое правило в таблице price_rules для данного client_id
         sql = 'SELECT rule FROM price_rules WHERE id=%s AND client_id=%s'
-        result = run_sql(sql, (str(rule_id), str(client_id), ))
+        result = run_sql_api(sql, (str(rule_id), str(client_id), ))
         if not result:
             abort(400, 'Правила с таким id не существует')
         rule = result[0][0]
 
         # получить список account_id по client_id
         sql = 'SELECT account_id FROM account_list WHERE client_id=%s'
-        result = run_sql(sql, (str(client_id), ))
+        result = run_sql_api(sql, (str(client_id), ))
         account_ids = list(result[0])
         account_ids = str(account_ids).strip('[]')
 
         # достать из таблицы price_table все товары по указанному account_id
         sql = f'SELECT account_id, offer_id, price FROM price_table WHERE account_id IN ({account_ids})'
-        prices = run_sql(sql, ())  # prices - список кортежей (offer_id, price)
+        prices = run_sql_api(sql, ())  # prices - список кортежей (offer_id, price)
         prices = [
             {
                 'account_id': product[0],

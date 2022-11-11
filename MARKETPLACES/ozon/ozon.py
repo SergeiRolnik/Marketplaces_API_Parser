@@ -218,7 +218,7 @@ class OzonApi:
                                 'marketing_seller_price': change_to_float(product['price']['marketing_seller_price']),
                                 # price index
                                 'price_index': change_to_float(product['price_index']),
-                                # commisssions
+                                # commissions
                                 'sales_percent': product['commissions']['sales_percent'],
                                 'fbo_fulfillment_amount': product['commissions']['fbo_fulfillment_amount'],
                                 'fbo_direct_flow_trans_min_amount': product['commissions']['fbo_direct_flow_trans_min_amount'],
@@ -234,7 +234,8 @@ class OzonApi:
                                 'fbs_deliv_to_customer_amount': product['commissions']['fbs_deliv_to_customer_amount'],
                                 'fbs_return_flow_amount': product['commissions']['fbs_return_flow_amount'],
                                 'fbs_return_flow_trans_min_amount': product['commissions']['fbs_return_flow_trans_min_amount'],
-                                'fbs_return_flow_trans_max_amount': product['commissions']['fbs_return_flow_trans_max_amount']
+                                'fbs_return_flow_trans_max_amount': product['commissions']['fbs_return_flow_trans_max_amount'],
+                                'volume_weight': product['volume_weight']
                     })
             time.sleep(SLEEP_TIME)
             count += 1

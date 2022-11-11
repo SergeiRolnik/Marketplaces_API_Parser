@@ -3,10 +3,9 @@ import json
 from datetime import datetime
 from loguru import logger
 import time
-from pprint import pprint
 from itertools import zip_longest
 from PARSER.config import CHUNK_SIZE, SLEEP_TIME
-from API.db import run_sql_get_product_ids
+from shared.db import run_sql_get_product_ids
 from MARKETPLACES.yandex.config import \
     BASE_URL, \
     URL_YANDEX_INFO, \
@@ -47,7 +46,7 @@ class YandexMarketApi:
         else:
             logger.error(f'Ошибка в выполнении запроса. Статус код:{response.status_code} URL:{url}')
 
-    def append_product_ids(self, products: list) -> list:
+    def append_product_ids(self, products: list) -> list:  # ИСПОЛЬЗУЕТСЯ ТОЛЬКО ДЛЯ update_prices
         offer_ids = [product['offer_id'] for product in products]
         sql = "SELECT offer_id, product_id FROM product_list WHERE product_id IN (%s)" % str(offer_ids).strip('[]')
         offer_product_ids = run_sql_get_product_ids(sql)
@@ -80,6 +79,8 @@ class YandexMarketApi:
                 'page_token': page_token  # идентификатор страницы c результатами, передавать nextPageToken
             }
             response = self.get(self.get_url(URL_YANDEX_INFO), params)
+            if not response:
+                break
             if response.get('status') == 'OK':
                 products += [
                         {
@@ -109,7 +110,9 @@ class YandexMarketApi:
                 'shopSkus': shop_skus_chunk  # список идент. магазина SKU, макс. 500, обязательный параметр(!)
             }
             response = self.post(self.get_url(URL_YANDEX_STOCKS), params)
-            if response and response.get('status') == 'OK':
+            if not response:
+                continue
+            if response.get('status') == 'OK':
                 for product in response['result']['shopSkus']:
                     for warehouse in product.get('warehouses', []):
                         products.append(
@@ -138,6 +141,8 @@ class YandexMarketApi:
                 'limit': NUMBER_OF_RECORDS_PER_PAGE  # кол-во записей, макс. 2000
             }
             response = self.get(self.get_url(URL_YANDEX_SHOW_PRICES), params)
+            if not response:
+                break
             if response.get('status') == 'OK':
                 result = response['result']
                 products += [
