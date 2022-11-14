@@ -1,5 +1,5 @@
-from shared.db import run_sql, run_sql_api, run_sql_account_list, run_sql_delete, get_table_cols
-from PARSER.config import TEST_ACCOUNTS, DB_TABLES, PRINT_DB_INSERTS
+from shared.db import run_sql, run_sql_api, run_sql_account_list, run_sql_delete, get_table_cols, connection_pool
+from PARSER.config import TEST_ACCOUNTS, EXCLUDE_ACCOUNTS, DB_TABLES, PRINT_DB_INSERTS
 from MARKETPLACES.ozon.ozon import OzonApi
 from MARKETPLACES.wb.wb import WildberriesApi
 from MARKETPLACES.yandex.yandex import YandexMarketApi
@@ -40,7 +40,7 @@ def insert_into_db(table_name: str, dataset: list, account_id: int, api_id: str,
         run_sql(sql, dataset)
 
     if PRINT_DB_INSERTS:
-        print(len(dataset), 'records inserted in', table_name, ' / account_id=', account_id)  # --- TESTING ---
+        print(len(dataset), 'записей добавлено в таблицу', table_name, ' / account_id=', account_id)
 
 
 def append_offer_ids(products: list, account_id: int) -> list:
@@ -73,9 +73,21 @@ def delete_duplicate_records_from_db():
         run_sql_delete(sql)
 
 
+def append_sales_percent(prices: list, sales_percents: list) -> list:
+    prices = pd.DataFrame.from_dict(prices)
+    sales_percents = pd.DataFrame.from_dict(sales_percents)
+    prices_with_sales_percents = pd.merge(prices, sales_percents, on='offer_id', how='left')
+    prices_with_sales_percents = prices_with_sales_percents.where(prices_with_sales_percents.notnull(), None)
+    return prices_with_sales_percents.to_dict('records')
+
+
 def process_account_data(account: dict):
     # account - словарь {(account_id, mp_id): [(attribute_id, attribute_value, key_attr), (), ...]}
     account_id, mp_id = list(account.keys())[0]
+
+    print('Обрабатывается аккаунт', account_id)
+
+    logger.info(f'Обработка аккаунта {account_id} начата')
     attrs = list(account.values())[0]
     api_key = list(filter(lambda x: x[2], attrs))[0][1]
     mp_object = create_mp_object(account)  # инициализация объекта класса МП
@@ -90,10 +102,10 @@ def process_account_data(account: dict):
         warehouses.clear()
 
         # --- PRODUCTS ---
-        for products_chunk in mp_object.get_product_list([], []):  # /v2/product/list (список всех товаров)
-            offer_ids = [product['offer_id'] for product in products_chunk]
-            products = mp_object.get_product_info_list(offer_ids)  # /v2/product/info/list (подробная информация о товарах по списку offer_id)
-            # insert_into_db('product_list', products, account_id, api_key)  # БОЛЬШЕ НЕ ЗАПИСЫВАЕМ В ТАБЛИЦУ product_list
+        # for products_chunk in mp_object.get_product_list([], []):  # /v2/product/list (список всех товаров)
+        #     offer_ids = [product['offer_id'] for product in products_chunk]
+        #     products = mp_object.get_product_info_list(offer_ids)  # /v2/product/info/list (подробная информация о товарах по списку offer_id)
+        #     insert_into_db('product_list', products, account_id, api_key)  # БОЛЬШЕ НЕ ЗАПИСЫВАЕМ В ТАБЛИЦУ product_list
 
         # --- ALL STOCKS --- (данные для таблицы total_stock)
         for stocks_chunk in mp_object.get_stocks_info():  # POST /v3/product/info/stocks
@@ -102,6 +114,9 @@ def process_account_data(account: dict):
             # --- STOCKS FBS ---
             offer_ids = [product['offer_id'] for product in stocks_chunk]
             fbs_skus = mp_object.get_product_info_list(offer_ids, fbs=True)  # /v2/product/info/list (отбираем товары по списку offer_ids на складах FBS)
+
+            # print('fbs_skus', len(fbs_skus))
+
             products_fbs = mp_object.get_stocks_fbs(fbs_skus)  # /v1/product/info/stocks-by-warehouse/fbs
             insert_into_db('stock_by_wh', products_fbs, account_id, api_key, add_date=True)
 
@@ -128,12 +143,14 @@ def process_account_data(account: dict):
     if mp_id == 2:  # ------------------------ ЯМ ------------------------------------------------------------
 
         warehouses = []
+        sales_percents = []
         # --- STOCKS ---
         for products_chunk in mp_object.get_info():  # GET /campaigns/{campaignId}/offer-mapping-entries
             shop_skus_chunk = [product['offer_id'] for product in products_chunk]  # выделяем shopSkus
             # insert_into_db('product_list', products_chunk, account_id, api_key)  # БОЛЬШЕ НЕ ЗАПИСЫВАЕМ В ТАБЛИЦУ product_list
-            products_chunk = mp_object.get_stocks(shop_skus_chunk)  # POST /stats/skus
+            products_chunk, sales_percents_chunk = mp_object.get_stocks(shop_skus_chunk)  # POST /stats/skus
             insert_into_db('stock_by_wh', products_chunk, account_id, api_key, add_date=True)
+            sales_percents += sales_percents_chunk
 
             # --- WAREHOUSES (FBY или FBS?) ---
             warehouses_chunk = [
@@ -146,9 +163,11 @@ def process_account_data(account: dict):
             warehouses += remove_duplicate_warehouses(warehouses_chunk)
         insert_into_db('wh_table', remove_duplicate_warehouses(warehouses), account_id, api_key)
 
-        # --- PRICES ---
+        # --- PRICES --- (!!! ДОБАВИТЬ ЗАГРУЗКУ ЦЕН ЧЕРЕЗ МЕТОД /stats/skus)
         for prices_chunk in mp_object.get_prices():  # GET /offer-prices
             prices_chunk = append_offer_ids(prices_chunk, account_id)  # НОВАЯ ФУНКЦИЯ
+            # !!! ДОБАВИТЬ В prices_chunk значение sales_percent из списка sales_percents
+            prices_chunk = append_sales_percent(prices_chunk, sales_percents)
             insert_into_db('price_table', prices_chunk, account_id, api_key, add_date=True)
 
     if mp_id == 3:  # ---------------------------------- ВБ (FBS) -----------------------------------------------
@@ -244,22 +263,23 @@ def process_account_data(account: dict):
             prices_fbo = append_offer_ids(prices_fbo, account_id)  # НОВАЯ ФУНКЦИЯ
             insert_into_db('price_table', prices_fbo, account_id, api_key, add_date=True)
 
+    logger.info(f'Аккаунт {account_id} обработан')
     return account_id
 
 
 def main():
     logger.remove()
-    logger.add(sink='logfile.log', format="{time} {level} {message}", level="INFO")
+    logger.add(sink='PARSER/logfile.log', format="{time} {level} {message}", level="INFO")
     logger.info('Работа скрипта начата')
 
-    sql = 'SELECT id FROM marketplaces_list ORDER BY id'
-    mps = run_sql_account_list(sql, ())
-    mp_ids = [item[0] for item in mps]  # список идентификаторов МП
+    # sql = 'SELECT id FROM marketplaces_list ORDER BY id'
+    # mps = run_sql_account_list(sql, ())
+    # mp_ids = [item[0] for item in mps]  # список идентификаторов МП
 
     futures = []
     with ThreadPoolExecutor() as executor:
 
-        for mp_id in mp_ids:  # цикл по маркетплейсам
+        for mp_id in [1, 2, 3, 15]:  # цикл по маркетплейсам
             sql = '''
             SELECT al.id, al.mp_id, asd.attribute_id, asd.attribute_value, sa.key_attr
             FROM account_list al
@@ -274,6 +294,9 @@ def main():
 
             if TEST_ACCOUNTS:  # список номеров аккаунтов в таблице account_list для тестирования (указать в config.py)
                 mp_accounts = [account for account in mp_accounts if account[0] in TEST_ACCOUNTS]
+
+            if not TEST_ACCOUNTS and EXCLUDE_ACCOUNTS:  # список номеров аккаунтов в таблице account_list, которые нужно исключить
+                mp_accounts = [account for account in mp_accounts if account[0] not in EXCLUDE_ACCOUNTS]
 
             for account_id, mp_id, attr_id, attr_value, key_attr in mp_accounts:
                 accounts_groupped.setdefault((account_id, mp_id), []).append((attr_id, attr_value, key_attr))
@@ -290,6 +313,7 @@ def main():
         response = [future.result() for future in futures]
 
     delete_duplicate_records_from_db()  # удалить дупликаты во всех таблицах
+    connection_pool.closeall()
     logger.info(f'Работа скрипта завершена.  Номера обработанных аккаунтов {response}')
 
 

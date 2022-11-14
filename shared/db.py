@@ -2,25 +2,29 @@ from shared.config import DB_DSN, MAX_NUM_OF_CONNECTIONS
 from psycopg2.pool import ThreadedConnectionPool
 from psycopg2._json import Json
 from loguru import logger
+from threading import Semaphore
 
 
-class ConnectionPool(ThreadedConnectionPool):
+class ReallyThreadedConnectionPool(ThreadedConnectionPool):
     def __init__(self, minconn, maxconn, *args, **kwargs):
+        self._semaphore = Semaphore(maxconn)
         super().__init__(minconn, maxconn, *args, **kwargs)
 
-    def connect_to_pool(self):
-        return self.getconn()
+    def getconn(self, *args, **kwargs):
+        self._semaphore.acquire()
+        return super().getconn(*args, **kwargs)
 
-    def disconnect_from_pool(self, connection):
-        return self.putconn(connection)
+    def putconn(self, *args, **kwargs):
+        super().putconn(*args, **kwargs)
+        self._semaphore.release()
 
 
-db_connection_pool = ConnectionPool(1, MAX_NUM_OF_CONNECTIONS, DB_DSN)
+connection_pool = ReallyThreadedConnectionPool(1, MAX_NUM_OF_CONNECTIONS, DB_DSN)
 
 
 def run_sql_delete(sql: str):
     try:
-        connection = db_connection_pool.connect_to_pool()
+        connection = connection_pool.getconn()
         connection.autocommit = True
         cursor = connection.cursor()
         cursor.execute(sql)
@@ -28,12 +32,12 @@ def run_sql_delete(sql: str):
         logger.error(f'Ошибка {error} при обработке SQL запроса {sql}')
     finally:
         if connection:
-            db_connection_pool.disconnect_from_pool(connection)
+            connection_pool.putconn(connection, close=False)
 
 
 def run_sql(sql: str, values: list):
     try:
-        connection = db_connection_pool.connect_to_pool()
+        connection = connection_pool.getconn()
         connection.autocommit = True
         cursor = connection.cursor()
         cursor.executemany(sql, values)
@@ -41,12 +45,12 @@ def run_sql(sql: str, values: list):
         logger.error(f'Ошибка {error} при обработке SQL запроса {sql}')
     finally:
         if connection:
-            db_connection_pool.disconnect_from_pool(connection)
+            connection_pool.putconn(connection, close=False)
 
 
 def run_sql_account_list(sql: str, values: tuple):
     try:
-        connection = db_connection_pool.connect_to_pool()
+        connection = connection_pool.getconn()
         cursor = connection.cursor()
         cursor.execute(sql, values)
         result = cursor.fetchall()
@@ -55,12 +59,12 @@ def run_sql_account_list(sql: str, values: tuple):
         logger.error(f'Ошибка {error} при обработке SQL запроса {sql}')
     finally:
         if connection:
-            db_connection_pool.disconnect_from_pool(connection)
+            connection_pool.putconn(connection, close=False)
 
 
 def run_sql_get_offer_ids(sql: str):
     try:
-        connection = db_connection_pool.connect_to_pool()
+        connection = connection_pool.getconn()
         cursor = connection.cursor()
         cursor.execute(sql)
         column_names = [col[0] for col in cursor.description]
@@ -70,14 +74,14 @@ def run_sql_get_offer_ids(sql: str):
         logger.error(f'Ошибка {error} при обработке SQL запроса {sql}')
     finally:
         if connection:
-            db_connection_pool.disconnect_from_pool(connection)
+            connection_pool.putconn(connection, close=False)
 
 
 def get_table_cols(table_name: str):
     try:
-        connection = db_connection_pool.connect_to_pool()
+        connection = connection_pool.getconn()
         cursor = connection.cursor()
-        sql = f"SELECT column_name, data_type FROM information_schema.columns WHERE table_name='{table_name}'"
+        sql = f"SELECT column_name FROM information_schema.columns WHERE table_name='{table_name}'"
         cursor.execute(sql)
         result = cursor.fetchall()
         result = [item[0] for item in result]
@@ -86,7 +90,7 @@ def get_table_cols(table_name: str):
         logger.error(f'Ошибка {error} при обработке SQL запроса {sql}')
     finally:
         if connection:
-            db_connection_pool.disconnect_from_pool(connection)
+            connection_pool.putconn(connection, close=False)
 
 
 # --- ФУНКЦИИ ДЛЯ РАБОТЫ API ---------------------------------------------------------
@@ -100,7 +104,7 @@ def run_sql_api(sql: str, values: tuple):
         values = tuple(values)
 
     try:
-        connection = db_connection_pool.connect_to_pool()
+        connection = connection_pool.getconn()
         connection.autocommit = True
         cursor = connection.cursor()
         cursor.execute(sql, values)
@@ -110,12 +114,12 @@ def run_sql_api(sql: str, values: tuple):
         logger.error(f'Ошибка {error} при обработке SQL запроса {sql}')
     finally:
         if connection:
-            db_connection_pool.disconnect_from_pool(connection)
+            connection_pool.putconn(connection, close=False)
 
 
 def run_sql_insert_many(sql: str, values: list):
     try:
-        connection = db_connection_pool.connect_to_pool()
+        connection = connection_pool.getconn()
         connection.autocommit = True
         cursor = connection.cursor()
         cursor.executemany(sql, values)
@@ -123,12 +127,12 @@ def run_sql_insert_many(sql: str, values: list):
         logger.error(f'Ошибка {error} при обработке SQL запроса {sql}')
     finally:
         if connection:
-            db_connection_pool.disconnect_from_pool(connection)
+            connection_pool.putconn(connection, close=False)
 
 
 def run_sql_get_product_ids(sql: str):
     try:
-        connection = db_connection_pool.connect_to_pool()
+        connection = connection_pool.getconn()
         cursor = connection.cursor()
         cursor.execute(sql)
         column_names = [col[0] for col in cursor.description]
@@ -138,5 +142,5 @@ def run_sql_get_product_ids(sql: str):
         logger.error(f'Ошибка {error} при обработке SQL запроса {sql}')
     finally:
         if connection:
-            db_connection_pool.disconnect_from_pool(connection)
+            connection_pool.putconn(connection, close=False)
 

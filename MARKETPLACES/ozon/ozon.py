@@ -96,6 +96,14 @@ class OzonApi:
                 'offset': count * NUMBER_OF_RECORDS_PER_PAGE  # количество элементов, которое будет пропущено в ответе
             }
             response = self.post(URL_OZON_STOCKS_ON_WAREHOUSES, params)
+
+            if not response:  # !!! ПЕРЕПИСАТЬ
+                if products:
+                    products = self.append_product_id(products)
+                    # print('fbo stocks / not response', len(products))
+                    yield products
+                break
+
             if response.get('wh_items'):
                 for warehouse in response['wh_items']:
                     for product in warehouse['items']:
@@ -111,12 +119,16 @@ class OzonApi:
             else:
                 if products:
                     products = self.append_product_id(products)
-                yield products
+                    # print('fbo stocks / final chunk', len(products))
+                    yield products
                 break
+
             time.sleep(SLEEP_TIME)
             count += 1
+
             if count * NUMBER_OF_RECORDS_PER_PAGE % CHUNK_SIZE == 0:
                 products = self.append_product_id(products)
+                # print('fbo stocks / 5000 chunk', len(products))
                 yield products
                 products.clear()
 
@@ -295,42 +307,46 @@ class OzonApi:
             offer_ids_chunk = offer_ids[i: i + NUMBER_OF_SEARCH_ENTRIES]
             params = {'offer_id': offer_ids_chunk, 'product_id': [], 'sku': []}
             response = self.post(URL_OZON_PRODUCT_INFO_LIST, params)
-            if response:
-                for product in response['result']['items']:
-                    if fbs:  # --- отбираем только товары на складах FBS
-                        for source in product['sources']:
-                            if source['source'] == 'fbs' and source['is_enabled']:
-                                products.append(source['sku'])
-                    else:    # --- отбираем все товары
-                        fbo_sku, fbs_sku = '', ''
-                        if product.get('sources'):
+            if not response:
+                continue
+            for product in response['result']['items']:
+                if fbs:  # --- отбираем только товары на складах FBS
+                    for source in product['sources']:
+                        if source['source'] == 'fbs' and source['is_enabled']:
+                            products.append(source['sku'])
+                else:    # --- отбираем все товары
+                    fbo_sku, fbs_sku = '', ''
+                    if product.get('sources'):
+                        try:
                             fbo_sku = list(filter(lambda item: item['source'] == 'fbo', product['sources']))[0]['sku']
                             fbo_sku = str(fbo_sku)
                             fbs_sku = list(filter(lambda item: item['source'] == 'fbs', product['sources']))[0]['sku']
                             fbs_sku = str(fbs_sku)
-                        products.append(
-                            {
-                                'product_id': product['id'],
-                                'name': product['name'],
-                                'offer_id': product['offer_id'],
-                                'barcode': product['barcode'],
-                                'category_id': product['category_id'],
-                                'images': product['images'],
-                                'created_at': product['created_at'],
-                                'vat': product['vat'],
-                                'visible': product['visible'],
-                                'has_price': product['visibility_details']['has_price'],
-                                'has_stock': product['visibility_details']['has_stock'],
-                                'active_product': product['visibility_details']['active_product'],
-                                'reason': str(product['visibility_details']['reasons']),
-                                'price_index': product['price_index'],
-                                'images360': str(product['images360']),
-                                'color_image': product['color_image'],
-                                'primary_image': product['primary_image'],
-                                'fbo_sku': fbo_sku,
-                                'fbs_sku': fbs_sku,
-                            }
-                        )
+                        except IndexError as error:
+                            logger.error(f'Ошибка {error} при записи fbo_sku или fbs_sku в методе /v2/product/info/list')
+                    products.append(
+                        {
+                            'product_id': product['id'],
+                            'name': product['name'],
+                            'offer_id': product['offer_id'],
+                            'barcode': product['barcode'],
+                            'category_id': product['category_id'],
+                            'images': product['images'],
+                            'created_at': product['created_at'],
+                            'vat': product['vat'],
+                            'visible': product['visible'],
+                            'has_price': product['visibility_details']['has_price'],
+                            'has_stock': product['visibility_details']['has_stock'],
+                            'active_product': product['visibility_details']['active_product'],
+                            'reason': str(product['visibility_details']['reasons']),
+                            'price_index': product['price_index'],
+                            'images360': str(product['images360']),
+                            'color_image': product['color_image'],
+                            'primary_image': product['primary_image'],
+                            'fbo_sku': fbo_sku,
+                            'fbs_sku': fbs_sku,
+                        }
+                    )
             time.sleep(SLEEP_TIME)
         return products
 

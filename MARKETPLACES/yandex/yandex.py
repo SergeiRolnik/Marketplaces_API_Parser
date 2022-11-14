@@ -15,8 +15,7 @@ from MARKETPLACES.yandex.config import \
 
 
 class YandexMarketApi:
-    def __init__(self, api_key: str, client_id: str, campaign_id: str):  # !!! ПРОВЕРИТЬ ПОСЛЕДОВАТЕЛЬНОСТЬ В БД
-    # def __init__(self, client_id: str, api_key: str, campaign_id: str):
+    def __init__(self, api_key: str, client_id: str, campaign_id: str):
         self.client_id = client_id
         self.api_key = api_key
         self.campaign_id = campaign_id
@@ -103,6 +102,7 @@ class YandexMarketApi:
 
     def get_stocks(self, shop_skus: list):  # POST /stats/skus (остатки по складам FBY)
         products = []
+        sales_percents = []  # список словарей offer_id, sales_percent
         for i in range(0, len(shop_skus), 500):
             shop_skus_chunk = shop_skus[i: i + 500]  # shop_skus_chunk - части списка skus по 500 шт.
             params = {
@@ -114,6 +114,16 @@ class YandexMarketApi:
                 continue
             if response.get('status') == 'OK':
                 for product in response['result']['shopSkus']:
+
+                    # --- ДОБАВЛЯЕМ sales_percent ----------------------------------------
+                    sales_percents.append(
+                        {
+                            'offer_id': product['shopSku'],
+                            # 'product_id': str(product['marketSku']),
+                            'sales_percent': list(filter(lambda x: x['type'] == 'FEE', product['tariffs']))[0]['percent']
+                        }
+                    )
+
                     for warehouse in product.get('warehouses', []):
                         products.append(
                             {
@@ -125,8 +135,8 @@ class YandexMarketApi:
                                 'fbs_present': 0  # для ЯМ записываем только остатки FBY
                             }
                         )
-        return products
-        # список словарей {'warehouse_id':..., 'offer_id':..., 'product_id':..., 'stock_fbo':..., 'stock_fbs':... }
+        return products, sales_percents
+        # список словарей {'warehouse_id':..., 'offer_id':..., 'product_id':..., 'fbo_present':..., 'fbs_present':... }
 
     # --- ФУНКЦИЯ PRICES ---
     def get_prices(self) -> list:  # GET /offer-prices

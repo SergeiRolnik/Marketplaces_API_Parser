@@ -104,14 +104,15 @@ class WildberriesApi:
 
     # также можно собирать цены --- STOCKS / PRICES ---
     def get_stocks_fbs(self):  # GET /api/v1/supplier/stocks (--- функция для сбора остатков FBS ---)
+        products = []
         params = {
             'key': self.supplier_api_key,
             'dateFrom': date.today()
         }
         response = self.get(URL_WILDBERRIES_STOCKS_FBS, params, True)  # stream=True
+
         if response:
             chunks = iter(response.json())
-            products = []
             for chunk in chunks:
                 product = {
                         'warehouse_id': chunk['warehouse'],
@@ -126,9 +127,11 @@ class WildberriesApi:
                         'price': chunk['Price']
                     }
                 products.append(product)
+
                 if len(products) % CHUNK_SIZE == 0:
                     yield products
                     products.clear()
+
             if products:
                 yield products
 
