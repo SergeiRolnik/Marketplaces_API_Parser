@@ -18,4 +18,4 @@ deploy:
   - docker compose down
   - docker rmi stock_price_parser_ecomru-ru-app
   - docker compose up -d
-  #
+  
