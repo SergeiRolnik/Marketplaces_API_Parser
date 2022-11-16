@@ -3,7 +3,7 @@ from flask_restful import Api, Resource, reqparse
 from loguru import logger
 import time
 from shared.db import run_sql_account_list
-from main import process_account_data, delete_duplicate_records_from_db
+from PARSER.main import process_account_data, delete_duplicate_records_from_db
 
 logger.remove()
 logger.add(sink='PARSER/logfile.log', format="{time} {level} {message}", level="INFO")
