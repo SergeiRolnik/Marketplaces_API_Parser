@@ -129,8 +129,8 @@ class YandexMarketApi:
                             {
                                 'warehouse_id': warehouse['id'],
                                 'warehouse_name': warehouse['name'],
-                                'offer_id': product['shopSku'],
-                                'product_id': str(product['marketSku']),
+                                'offer_id': product.get('shopSku'),
+                                'product_id': str(product.get('marketSku')),  # ошибка KeyError 15/11/2022
                                 'fbo_present': sum(item['count'] for item in warehouse['stocks'] if item['type'] == 'AVAILABLE'),
                                 'fbs_present': 0  # для ЯМ записываем только остатки FBY
                             }

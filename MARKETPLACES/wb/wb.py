@@ -14,10 +14,9 @@ from MARKETPLACES.wb.config import \
 
 
 class WildberriesApi:
-    # def __init__(self, supplier_api_key: str, api_key: str):
     def __init__(self, api_key: str, supplier_api_key: str):
-        self.api_key = api_key                    # API-ключ для доступа к методам /public/api/v1 и /api/v2
-        self.supplier_api_key = supplier_api_key  # API-ключ для доступа к методам /api/v1/supplier
+        self.api_key = api_key                    # API-ключ для доступа к методам /public/api/v1 и /api/v2  (mp_id = 15)
+        self.supplier_api_key = supplier_api_key  # API-ключ для доступа к методам /api/v1/supplier  (mp_id = 3)
 
     def get_headers(self) -> dict:
         headers = {
@@ -135,13 +134,38 @@ class WildberriesApi:
             if products:
                 yield products
 
+    def get_stocks_fbs_test(self):  # GET /api/v1/supplier/stocks (--- TESTING ---)
+        products = []
+        params = {
+            'key': self.supplier_api_key,
+            'dateFrom': date.today()
+        }
+        response = self.get(URL_WILDBERRIES_STOCKS_FBS, params, False)  # stream=True
+        print('response get_stocks_fbs_test', response.json())
+        if response:
+            products = [
+                {
+                    'warehouse_id': product['warehouse'],
+                    'warehouse_name': product['warehouseName'],
+                    'barcode': product['barcode'],
+                    'product_name': product['subject'],
+                    'product_category': product['category'],
+                    'offer_id': product['supplierArticle'],
+                    'product_id': str(product['nmId']),
+                    'fbo_present': 0,
+                    'fbs_present': product['quantityFull'],
+                    'price': product['Price']
+                }
+                for product in response.json()]
+        return products
+
     # --- ФУНКЦИИ PRICES
     def get_prices(self):  # GET /public/api/v1/info
+        products = []
         params = {'quantity': 0}  # 2 - товар с нулевым остатком, 1 - с ненулевым остатком, 0 - с любым остатком
         response = self.get(URL_WILDBERRIES_INFO, params, True)  # stream=True
         if response:
             chunks = iter(response.json())
-            products = []
             for chunk in chunks:
                 product = {
                         'product_id': str(chunk.get('nmId')),
@@ -153,6 +177,20 @@ class WildberriesApi:
                     products.clear()
             if products:
                 yield products  # список словарей {'product_id': ...., 'price': ....}
+
+    def get_prices_test(self):  # GET /public/api/v1/info
+        products = []
+        params = {'quantity': 0}  # 2 - товар с нулевым остатком, 1 - с ненулевым остатком, 0 - с любым остатком
+        response = self.get(URL_WILDBERRIES_INFO, params, False)
+        if response:
+            for product in response.json():
+                products.append(
+                    {
+                        'product_id': str(product.get('nmId')),
+                        'price': product.get('price')
+                    }
+                )
+        return products
 
     # --- ФУНКЦИИ UPDATE (API STOCKS/PRICES) ---
     def update_stocks(self, stocks: list):  # POST /api/v2/stocks

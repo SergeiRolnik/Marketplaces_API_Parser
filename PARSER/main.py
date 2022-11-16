@@ -16,9 +16,9 @@ def create_mp_object(account: dict):  # на вход словарь {(account_i
         return OzonApi(attribute_values[0], attribute_values[1])
     if mp_id == 2:  # ЯМ
         return YandexMarketApi(attribute_values[0], attribute_values[1], attribute_values[2])
-    if mp_id == 3:  # ВБ (FBS)
+    if mp_id == 15:  # ВБ (FBS)
         return WildberriesApi('', attribute_values[0])
-    if mp_id == 15:  # ВБ (FBO)
+    if mp_id == 3:  # ВБ (FBO)
         return WildberriesApi(attribute_values[0], '')
 
 
@@ -84,17 +84,12 @@ def append_sales_percent(prices: list, sales_percents: list) -> list:
 def process_account_data(account: dict):
     # account - словарь {(account_id, mp_id): [(attribute_id, attribute_value, key_attr), (), ...]}
     account_id, mp_id = list(account.keys())[0]
-
-    print('Обрабатывается аккаунт', account_id)
-
-    logger.info(f'Обработка аккаунта {account_id} начата')
+    # print('Обрабатывается аккаунт', account)
     attrs = list(account.values())[0]
     api_key = list(filter(lambda x: x[2], attrs))[0][1]
     mp_object = create_mp_object(account)  # инициализация объекта класса МП
 
     if mp_id == 1:  # -------------------------------------- ОЗОН ----------------------------------------
-
-        # ok = input('Enter any key')  # --- TESTING ---
 
         # --- WAREHOUSES FBS --- !!! проверить почему в данных по складу is_rfbs = false
         warehouses = mp_object.get_warehouses()  # POST /v1/warehouse/list список складов
@@ -170,7 +165,7 @@ def process_account_data(account: dict):
             prices_chunk = append_sales_percent(prices_chunk, sales_percents)
             insert_into_db('price_table', prices_chunk, account_id, api_key, add_date=True)
 
-    if mp_id == 3:  # ---------------------------------- ВБ (FBS) -----------------------------------------------
+    if mp_id == 15:  # ---------------------------------- ВБ (FBS) -----------------------------------------------
 
         # --- STOCKS & PRICES FBS --- (используется один и тот же метод)
         warehouses_fbs = []
@@ -189,15 +184,15 @@ def process_account_data(account: dict):
             insert_into_db('stock_by_wh', stocks_fbs, account_id, api_key, add_date=True)
 
             # --- PRODUCTS FBS ---
-            products = [
-                {
-                    'product_id': product['product_id'],
-                    'offer_id': product['offer_id'],
-                    'barcode': product['barcode'],
-                    'category_id': product['product_category'],
-                    'name': product['product_name']  # !!! возможно загрузить другие поля
-                }
-                for product in products_fbs_chunk]
+            # products = [
+            #     {
+            #         'product_id': product['product_id'],
+            #         'offer_id': product['offer_id'],
+            #         'barcode': product['barcode'],
+            #         'category_id': product['product_category'],
+            #         'name': product['product_name']  # !!! возможно загрузить другие поля
+            #     }
+            #     for product in products_fbs_chunk]
             # insert_into_db('product_list', products, account_id, api_key)  # БОЛЬШЕ НЕ ЗАПИСЫВАЕМ В ТАБЛИЦУ product_list
 
             # --- PRICES FBS ---  !!! дублирует product_id полученные через метод # GET /public/api/v1/info
@@ -222,7 +217,7 @@ def process_account_data(account: dict):
             warehouses_fbs += remove_duplicate_warehouses(warehouses_fbs_chunk)
         insert_into_db('wh_table', remove_duplicate_warehouses(warehouses_fbs), account_id, api_key)
 
-    if mp_id == 15:  # ---------------------------------- ВБ (FBO) -----------------------------------------------
+    if mp_id == 3:  # ---------------------------------- ВБ (FBO) -----------------------------------------------
 
         # --- WAREHOUSES FBO(?) ---
         warehouses = mp_object.get_warehouses()  # /api/v2/warehouses, список словарей {'warehouse_id':..., 'name': ...}
@@ -236,15 +231,15 @@ def process_account_data(account: dict):
             insert_into_db('stock_by_wh', products_fbo_chunk, account_id, api_key, add_date=True)
 
             # --- PRODUCTS FBO ---
-            products = [
-                {
-                    'product_id': product['product_id'],
-                    'offer_id': product['offer_id'],
-                    'barcode': product['barcode'],
-                    'category_id': product['category'],
-                    'name': product['product_name']  # !!! возможно загрузить другие поля
-                }
-                for product in products_fbo_chunk]
+            # products = [
+            #     {
+            #         'product_id': product['product_id'],
+            #         'offer_id': product['offer_id'],
+            #         'barcode': product['barcode'],
+            #         'category_id': product['category'],
+            #         'name': product['product_name']  # !!! возможно загрузить другие поля
+            #     }
+            #     for product in products_fbo_chunk]
             # insert_into_db('product_list', products, account_id, api_key)  # БОЛЬШЕ НЕ ЗАПИСЫВАЕМ В ТАБЛИЦУ product_list
 
             # --- WAREHOUSES FBO ---
@@ -263,7 +258,6 @@ def process_account_data(account: dict):
             prices_fbo = append_offer_ids(prices_fbo, account_id)  # НОВАЯ ФУНКЦИЯ
             insert_into_db('price_table', prices_fbo, account_id, api_key, add_date=True)
 
-    logger.info(f'Аккаунт {account_id} обработан')
     return account_id
 
 
@@ -274,7 +268,7 @@ def main():
 
     # sql = 'SELECT id FROM marketplaces_list ORDER BY id'
     # mps = run_sql_account_list(sql, ())
-    # mp_ids = [item[0] for item in mps]  # список идентификаторов МП
+    # mp_ids = [item[0] for item in mps]
 
     futures = []
     with ThreadPoolExecutor() as executor:
@@ -304,7 +298,6 @@ def main():
             for account, attrs in accounts_groupped.items():
                 attr_value = list(filter(lambda x: x[2], attrs))[0][1]
                 if attr_value not in processed_attr_values:
-                    # --- ЗАПУСК МНОГОПОТОЧНОСТИ (обработка аккаунта) ---
                     future = executor.submit(process_account_data, {account: attrs})
                     futures.append(future)
                     processed_attr_values.append(attr_value)
