@@ -74,6 +74,9 @@ class WildberriesApi:
                 'take': NUMBER_OF_RECORDS_PER_PAGE
                     }
             response = self.get(URL_WILDBERRIES_STOCKS_FBO, params, False)  # stream=False
+
+            # print('response', response.json())  # --- TESTING ---
+
             if response:
                 response = response.json()
                 if response.get('stocks'):
@@ -141,7 +144,7 @@ class WildberriesApi:
             'dateFrom': date.today()
         }
         response = self.get(URL_WILDBERRIES_STOCKS_FBS, params, False)  # stream=True
-        print('response get_stocks_fbs_test', response.json())
+        # print('response get_stocks_fbs_test', response.json())
         if response:
             products = [
                 {
@@ -167,9 +170,10 @@ class WildberriesApi:
         if response:
             chunks = iter(response.json())
             for chunk in chunks:
+                price_after_discount = chunk.get('price') * (1 - (chunk.get('discount') + chunk.get('promoCode')) / 100)
                 product = {
                         'product_id': str(chunk.get('nmId')),
-                        'price': chunk.get('price')
+                        'price': round(price_after_discount, 2)
                     }
                 products.append(product)
                 if len(products) % CHUNK_SIZE == 0:

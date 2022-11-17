@@ -3,15 +3,14 @@ from flask_sqlalchemy import SQLAlchemy
 import uuid
 from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
-import datetime
+from datetime import datetime, timedelta
 from functools import wraps
+from shared.db import DB_DSN
 
 app = Flask(__name__)
-
 app.config['SECRET_KEY'] = 'some secrete word'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite'
+app.config['SQLALCHEMY_DATABASE_URI'] = DB_DSN
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
 db = SQLAlchemy(app)
 
 
@@ -23,9 +22,6 @@ class User(db.Model):
     password = db.Column(db.String(100))
 
 
-db.create_all() # нужно только для создания таблицы пользователей
-
-
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -35,14 +31,14 @@ def token_required(f):
         if not token:
             return jsonify({'message': 'Нет токена'}), 401
         try:
-            data = jwt.decode(token, app.config['SECRET_KEY'])
+            jwt.decode(token, app.config['SECRET_KEY'], algorithms="HS256")
         except:
             return jsonify({'message': 'Неверный токен'}), 401
         return f(*args, **kwargs)
     return decorated
 
-
-@app.route('/user', methods=['POST'], endpoint='create_user')
+# СОЗДАТЬ ПОЛЬЗОВАТЕЛЯ
+@app.route('/user', methods=['POST'])
 def create_user():
     data = request.get_json()
     hashed_password = generate_password_hash(data['password'], method='sha256')
@@ -52,6 +48,7 @@ def create_user():
     return jsonify({'message': 'Создан новый пользователь'})
 
 
+# ЗАЛОГИНИТЬСЯ И ПОЛУЧИТЬ ТОКЕН
 @app.route('/login', methods=['POST'])
 def login():
     auth = request.authorization
@@ -62,27 +59,26 @@ def login():
         return make_response('Пользователя нет в базе данных', 401)
     if check_password_hash(user.password, auth.password):
         token = jwt.encode(
-            {
-            'public_id': user.public_id,
-            'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
-            },
-            app.config['SECRET_KEY']
+            {'public_id': user.public_id, 'exp': datetime.utcnow() + timedelta(hours=24)},
+            app.config['SECRET_KEY'],
+            algorithm="HS256"
         )
-        return jsonify({'token': token.decode('UTF-8')})
+        return jsonify({'token': token})
     return make_response('Неверный логин или пароль', 401)
 
 
+# ПОЛУЧИТЬ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ (ДЛЯ ТЕСТИРОВАНИЯ ТОКЕНА)
 @app.route('/user', methods=['GET'])
 @token_required
 def get_all_users():
     users = User.query.all()
-    users_list = []
-    for user in users:
-        user_data = {}
-        user_data['public_id'] = user.public_id
-        user_data['name'] = user.name
-        user_data['password'] = user.password
-        users_list.append(user_data)
+    users_list = [
+        {
+            'public_id': user.public_id,
+            'name': user.name,
+            'password': user.password
+        }
+        for user in users]
     return jsonify({'users': users_list})
 
 

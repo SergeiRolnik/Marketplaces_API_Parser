@@ -16,10 +16,10 @@ def create_mp_object(account: dict):  # на вход словарь {(account_i
         return OzonApi(attribute_values[0], attribute_values[1])
     if mp_id == 2:  # ЯМ
         return YandexMarketApi(attribute_values[0], attribute_values[1], attribute_values[2])
-    if mp_id == 15:  # ВБ (FBS)
-        return WildberriesApi('', attribute_values[0])
     if mp_id == 3:  # ВБ (FBO)
         return WildberriesApi(attribute_values[0], '')
+    if mp_id == 15:  # ВБ (FBS)
+        return WildberriesApi('', attribute_values[0])
 
 
 def insert_into_db(table_name: str, dataset: list, account_id: int, api_id: str, add_date=False):
@@ -165,6 +165,47 @@ def process_account_data(account: dict):
             prices_chunk = append_sales_percent(prices_chunk, sales_percents)
             insert_into_db('price_table', prices_chunk, account_id, api_key, add_date=True)
 
+    if mp_id == 3:  # ---------------------------------- ВБ (FBO) -----------------------------------------------
+
+        # --- WAREHOUSES FBO(?) ---
+        warehouses = mp_object.get_warehouses()  # /api/v2/warehouses, список словарей {'warehouse_id':..., 'name': ...}
+        for warehouse in warehouses:  # метод получает только склады FBO?
+            warehouse['wh_type'] = 'FBO'
+        insert_into_db('wh_table', warehouses, account_id, api_key)
+
+        # --- STOCKS FBO ---
+        warehouses_fbo = []
+        for products_fbo_chunk in mp_object.get_stocks_fbo():  # GET /api/v2/stocks
+            insert_into_db('stock_by_wh', products_fbo_chunk, account_id, api_key, add_date=True)
+
+            # --- PRODUCTS FBO ---
+            # products = [
+            #     {
+            #         'product_id': product['product_id'],
+            #         'offer_id': product['offer_id'],
+            #         'barcode': product['barcode'],
+            #         'category_id': product['category'],
+            #         'name': product['product_name']  # !!! возможно загрузить другие поля
+            #     }
+            #     for product in products_fbo_chunk]
+            # insert_into_db('product_list', products, account_id, api_key)  # БОЛЬШЕ НЕ ЗАПИСЫВАЕМ В ТАБЛИЦУ product_list
+
+            # --- WAREHOUSES FBO ---
+            warehouses_fbo_chunk = [
+                {
+                    'warehouse_id': product['warehouse_id'],
+                    'name': product['warehouse_name'],
+                    'wh_type': 'FBO',
+                }
+                for product in products_fbo_chunk]
+            warehouses_fbo += remove_duplicate_warehouses(warehouses_fbo_chunk)
+        insert_into_db('wh_table', remove_duplicate_warehouses(warehouses_fbo), account_id, api_key)
+
+        # --- PRICES FBO + FBS --- (!!! включает также товары FBS)
+        for prices_fbo in mp_object.get_prices():  # GET /public/api/v1/info
+            prices_fbo = append_offer_ids(prices_fbo, account_id)  # НОВАЯ ФУНКЦИЯ
+            insert_into_db('price_table', prices_fbo, account_id, api_key, add_date=True)
+
     if mp_id == 15:  # ---------------------------------- ВБ (FBS) -----------------------------------------------
 
         # --- STOCKS & PRICES FBS --- (используется один и тот же метод)
@@ -216,47 +257,6 @@ def process_account_data(account: dict):
                 for product in products_fbs_chunk]
             warehouses_fbs += remove_duplicate_warehouses(warehouses_fbs_chunk)
         insert_into_db('wh_table', remove_duplicate_warehouses(warehouses_fbs), account_id, api_key)
-
-    if mp_id == 3:  # ---------------------------------- ВБ (FBO) -----------------------------------------------
-
-        # --- WAREHOUSES FBO(?) ---
-        warehouses = mp_object.get_warehouses()  # /api/v2/warehouses, список словарей {'warehouse_id':..., 'name': ...}
-        for warehouse in warehouses:             # метод получает только склады FBO?
-            warehouse['wh_type'] = 'FBO'
-        insert_into_db('wh_table', warehouses, account_id, api_key)
-
-        # --- STOCKS FBO ---
-        warehouses_fbo = []
-        for products_fbo_chunk in mp_object.get_stocks_fbo():  # GET /api/v2/stocks
-            insert_into_db('stock_by_wh', products_fbo_chunk, account_id, api_key, add_date=True)
-
-            # --- PRODUCTS FBO ---
-            # products = [
-            #     {
-            #         'product_id': product['product_id'],
-            #         'offer_id': product['offer_id'],
-            #         'barcode': product['barcode'],
-            #         'category_id': product['category'],
-            #         'name': product['product_name']  # !!! возможно загрузить другие поля
-            #     }
-            #     for product in products_fbo_chunk]
-            # insert_into_db('product_list', products, account_id, api_key)  # БОЛЬШЕ НЕ ЗАПИСЫВАЕМ В ТАБЛИЦУ product_list
-
-            # --- WAREHOUSES FBO ---
-            warehouses_fbo_chunk = [
-                {
-                    'warehouse_id': product['warehouse_id'],
-                    'name': product['warehouse_name'],
-                    'wh_type': 'FBO',
-                }
-                for product in products_fbo_chunk]
-            warehouses_fbo += remove_duplicate_warehouses(warehouses_fbo_chunk)
-        insert_into_db('wh_table', remove_duplicate_warehouses(warehouses_fbo), account_id, api_key)
-
-        # --- PRICES FBO + FBS --- (!!! включает также товары FBS)
-        for prices_fbo in mp_object.get_prices():  # GET /public/api/v1/info
-            prices_fbo = append_offer_ids(prices_fbo, account_id)  # НОВАЯ ФУНКЦИЯ
-            insert_into_db('price_table', prices_fbo, account_id, api_key, add_date=True)
 
     return account_id
 
