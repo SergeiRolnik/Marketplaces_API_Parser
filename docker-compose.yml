@@ -1,7 +1,8 @@
 version: "3.8"
 
 services:
-  app:
+  stock-price-parser-ecomru-ru:
+    container_name: stock-price-parser-ecomru-ru
     build: .
     environment:
       TZ: Europe/Moscow
@@ -15,5 +16,19 @@ services:
       ROOT_CERT: ${ROOT_CERT}
       APP_ENV: ${APP_ENV}
 
-    command: sh script.sh
+    #command: sh script.sh
     
+  nginx:
+    container_name: nginx-stock-price-parser-ecomru-ru
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    depends_on:
+      - stock-price-parser-ecomru-ru
+    restart: always
+    environment:
+      - "TZ=Europe/Moscow"
+    ports:
+      - 8096:80
+      - 4446:443
+      - 5066:5000
