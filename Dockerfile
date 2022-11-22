@@ -15,7 +15,7 @@ RUN mkdir -p ~/.postgresql && \
 
 EXPOSE 5000
 
-CMD ["gunicorn", "-b", "0.0.0.0:5000", "--timeout", "9999", "--workers", "8", "python", "-m", "PARSER.parser_api:app", "--reload"]
+CMD gunicorn -b 0.0.0.0:5000 --timeout 9999 --workers 4 --chdir /app/PARSER parser_api:app --reload
 
 #CMD python -m PARSER.parser_api
 
