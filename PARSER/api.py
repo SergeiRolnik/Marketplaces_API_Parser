@@ -4,6 +4,7 @@ from loguru import logger
 import time
 from shared.db import run_sql_account_list
 from PARSER.main import process_account_data, delete_duplicate_records_from_db
+from shared.auth import token_required
 
 logger.remove()
 logger.add(sink='PARSER/logfile.log', format="{time} {level} {message}", level="INFO")
@@ -17,7 +18,7 @@ parser.add_argument('account_id', type=int, required=True, help='Номер ак
 
 # --- PARSE STOCKS & PRICES ---
 class ParseStocksAndPrices(Resource):
-    # @token_required
+    @token_required
     def post(self):
         start_time = time.time()
         args = parser.parse_args()
@@ -45,7 +46,8 @@ class ParseStocksAndPrices(Resource):
 
 
 class TestAPI(Resource):
-    def post(self):
+    @token_required
+    def get(self):
         return {'message': 'Все ОК'}
 
 

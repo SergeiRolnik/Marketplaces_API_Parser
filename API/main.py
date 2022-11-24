@@ -1,22 +1,20 @@
-from flask import Flask, request, abort
+from flask import request, abort, jsonify
 from flask_restful import Api, Resource, reqparse
 from loguru import logger
 from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
-import datetime
 from itertools import groupby
 from datetime import date
 from MARKETPLACES.ozon.ozon import OzonApi
 from MARKETPLACES.wb.wb import WildberriesApi
 from MARKETPLACES.yandex.yandex import YandexMarketApi
-from MARKETPLACES.sber.sber import SberApi
-from shared.db import run_sql_api, run_sql_insert_many, get_table_cols
-from shared.config import APP_ENV
+from shared.db import run_sql_api, run_sql_insert_many, get_table_cols, run_sql_account_list
 from API.config import MAX_NUMBER_OF_PRODUCTS, NUMBER_OF_PRODUCTS_TO_PROCESS, PRINT_DB_INSERTS
+from shared.auth import *
+from shared.models import *
 
 logger.remove()
-logger.add(sink='logfile.log', format="{time} {level} {message}", level="INFO")
-app = Flask(__name__)
+logger.add(sink='API/logfile.log', format="{time} {level} {message}", level="INFO")
 api = Api(app)
 
 
@@ -102,15 +100,25 @@ def apply_action(products: list, actions: dict, product_list: str) -> list:
 
 
 # функция создает соотв. объект класса для отправки запроса на площадку
-def create_mp_object(mp_id: int, client_id: str, api_key: str, campaign_id: str):
-    if mp_id == 1:
-        return OzonApi(client_id, api_key)
-    elif mp_id == 2:
-        return YandexMarketApi(client_id, api_key, campaign_id)
-    elif mp_id == 3:
-        return WildberriesApi(client_id, api_key)  # вместо api_key подставляем client_id в соотв. с данными в таблице account_list
-    elif mp_id == 4:
-        return SberApi(api_key)
+# def create_mp_object(mp_id: int, client_id: str, api_key: str, campaign_id: str):
+#     if mp_id == 1:
+#         return OzonApi(client_id, api_key)
+#     if mp_id == 2:
+#         return YandexMarketApi(client_id, api_key, campaign_id)
+#     if mp_id == 3:
+#         return WildberriesApi(client_id, api_key)  # вместо api_key подставляем client_id в соотв. с данными в таблице account_list
+
+def create_mp_object(account: dict):  # на вход словарь {(account_id, mp_id): [(attribute_id, attribute_value), ...]}
+    mp_id = list(account.keys())[0][1]
+    attribute_values = [item[1] for item in list(account.values())[0]]
+    if mp_id == 1:  # Озон
+        return OzonApi(attribute_values[0], attribute_values[1])
+    if mp_id == 2:  # ЯМ
+        return YandexMarketApi(attribute_values[0], attribute_values[1], attribute_values[2])
+    if mp_id == 3:  # ВБ (FBO)
+        return WildberriesApi(attribute_values[0], '')
+    if mp_id == 15:  # ВБ (FBS)
+        return WildberriesApi('', attribute_values[0])
 
 
 def insert_into_db(table_name: str, dataset: list, account_id: int, warehouse_id: str, api_id: str, add_date=False):
@@ -136,17 +144,6 @@ def insert_into_db(table_name: str, dataset: list, account_id: int, warehouse_id
             print(len(dataset), 'records inserted in', table_name, ' / account_id=', account_id)
 
 
-def validate(data: dict) -> dict:
-    products = data['products']
-    error_message = ''
-    error_code = 0
-    if len(products) > MAX_NUMBER_OF_PRODUCTS:
-        error_message = f'В запросе более {MAX_NUMBER_OF_PRODUCTS} товаров.  Уменьшите кол-во товаров.'
-        error_code = 400
-    # другая валидация, если необходимо
-    return {'message': error_message, 'code': error_code}
-
-
 def map_offer_ids(account: dict) -> list:
     account_id = account['account_id']
     if 'prices' in account.keys():
@@ -164,21 +161,27 @@ def map_offer_ids(account: dict) -> list:
 
 # отправляем данные по одной партии товаров на разные аккаунты/площадки в разных потоках
 def process_account_data(account: dict):
-
     # account - словарь {'account_id': 1001, 'warehouse_id': 777, 'stocks': [{'offer_id': 'ABC', 'stock': 100}, ...]}
     # или
     # account - словарь {'account_id': 1001, 'prices': [{'offer_id': 'ABC', 'price': 100}, ...]}
 
     account_id = account['account_id']
     warehouse_id = account.get('warehouse_id')  # если есть склад
-
-    # из БД (account_list) по account_id получаем mp_id, client_id, api_key, campaign_id
-    sql = 'SELECT mp_id, client_id_api, api_key, campaigns_id FROM account_list WHERE id=%s'
-    result = run_sql_api(sql, (str(account_id), ))
-    mp_id, client_id, api_key, campaign_id = result[0]
-
-    # инициализируем объект соотв. класса для обращения в API площадки
-    mp_object = create_mp_object(mp_id, client_id, api_key, campaign_id)
+    sql = '''
+    SELECT al.id, al.mp_id, asd.attribute_id, asd.attribute_value, sa.key_attr
+    FROM account_list al
+    JOIN account_service_data asd ON al.id = asd.account_id
+    JOIN service_attr sa ON asd.attribute_id = sa.id
+    WHERE al.status_1 = 'Active' AND al.id = %s
+    ORDER BY al.id, asd.attribute_id
+    '''
+    mp_accounts = run_sql_account_list(sql, (str(account_id),))
+    account_groupped = {}
+    for account_id, mp_id, attr_id, attr_value, key_attr in mp_accounts:
+        account_groupped.setdefault((account_id, mp_id), []).append((attr_id, attr_value, key_attr))
+    mp_object = create_mp_object(account_groupped)  # инициализация объекта класса МП
+    # account_groupped - словарь {(account_id, mp_id): [(attribute_id, attribute_value, key_attr), (), ...]}
+    mp_id = list(account.keys())[0][1]
 
     # ------------------------------------- UPDATE STOCKS --------------------------------------------
     if account.get('stocks'):
@@ -207,39 +210,91 @@ def process_account_data(account: dict):
 
 parser = reqparse.RequestParser()
 parser.add_argument('data', type=dict, location='json', required=True)
+parser.add_argument('x-access-token', type=str, location='headers', required=True)
 
 
 # --- ADD STOCKS TO DB ---
 class AddStocksToDB(Resource):
-    # @token_required
+    @token_required
     def post(self):
         args = parser.parse_args()
         data = args['data']
-        validation_result = validate(data)
-        if validation_result['code'] != 0:
-            abort(validation_result['code'], validation_result['error_message'])
-        account_id = data['account_id']
-        warehouse_id = str(data['warehouse_id'])
-        products = data['products']
-        api_id = run_sql_api('SELECT api_key FROM account_list WHERE id=%s', (str(account_id),))[0][0]
+        token = args['x-access-token']
+        account_id = data.get('account_id')  # !!! если отправляем на вирт аккаунт, тогда этот параметр не нужен
+        warehouse_id = str(data.get('warehouse_id'))  # !!! если отправляем на вирт склад, тогда этот параметр не нужен
+        products = data.get('products')
+
+        error_message = ''  # валидация данных
+        if not products:
+            error_message += f'В запросе должен быть хотя бы один товар.'
+        if len(products) > MAX_NUMBER_OF_PRODUCTS:
+            error_message += f'В запросе > {MAX_NUMBER_OF_PRODUCTS} товаров.  Уменьшите кол-во товаров.'
+        if not warehouse_id:
+            error_message += 'Введите номер склада'
+        if error_message:
+            abort(400, error_message)
+
+        # записать остатки на вирт аккаунт/склад, если не задан account_id / warehouse_id
+        if not account_id:
+            client = get_client_from_token(token)  # получаем клиента по токену
+
+            print('client_id', client.id)
+
+            account = Account.query.filter_by(client_id=client.id).filter_by(mp_id=5).first()
+            account_id = account.id
+
+            print('account_id', account_id)
+
+            warehouse = Warehouse.query.filter_by(account_id=account_id).first()
+            warehouse_id = warehouse.warehouse_id
+
+        sql = '''
+        SELECT asd.attribute_value
+        FROM account_list al
+        JOIN account_service_data asd ON al.id = asd.account_id
+        JOIN service_attr sa ON asd.attribute_id = sa.id
+        WHERE al.status_1 = 'Active' AND al.id = %s AND sa.key_attr
+        '''
+        api_id = run_sql_account_list(sql, (str(account_id),))[0][0]
         insert_into_db('stock_by_wh', products, account_id, warehouse_id, api_id, add_date=True)
-        return {'message': f'В базе данных обновлены остатки {len(products)} товаров'}
+        return {'message': f'В таблице stock_by_wh добавлены остатки {len(products)} товаров'}
 
 
 # --- ADD PRICES TO DB ---
+
 class AddPricesToDB(Resource):
-    # @token_required
+    @token_required
     def post(self):
         args = parser.parse_args()
         data = args['data']
-        validation_result = validate(data)
-        if validation_result['code'] != 0:
-            abort(validation_result['code'], validation_result['error_message'])
-        account_id = data['account_id']
-        products = data['products']
-        api_id = run_sql_api('SELECT api_key FROM account_list WHERE id=%s', (str(account_id), ))[0][0]
-        insert_into_db('price_table', products, account_id, api_id, add_date=True)
-        return {'message': f'В базе данных обновлены цены {len(products)} товаров'}
+        token = args['x-access-token']
+        account_id = data.get('account_id')  # !!! если отправляем на вирт аккаунт, тогда этот параметр не нужен
+        products = data.get('products')
+
+        error_message = ''  # валидация данных
+        if not products:
+            error_message += f'В запросе должен быть хотя бы один товар.'
+        if len(products) > MAX_NUMBER_OF_PRODUCTS:
+            error_message += f'В запросе > {MAX_NUMBER_OF_PRODUCTS} товаров.  Уменьшите кол-во товаров.'
+        if error_message:
+            abort(400, error_message)
+
+        # записать остатки на вирт аккаунт/склад, если не задан account_id / warehouse_id
+        if not account_id:
+            client = get_client_from_token(token)  # получаем клиента по токену
+            account = Account.query.filter_by(client_id=client.id).filter_by(mp_id=5).first()
+            account_id = account.id
+
+        sql = '''
+        SELECT asd.attribute_value
+        FROM account_list al
+        JOIN account_service_data asd ON al.id = asd.account_id
+        JOIN service_attr sa ON asd.attribute_id = sa.id
+        WHERE al.status_1 = 'Active' AND al.id = %s AND sa.key_attr
+        '''
+        api_id = run_sql_account_list(sql, (str(account_id), ))[0][0]
+        insert_into_db('price_table', products, account_id, '', api_id, add_date=True)
+        return {'message': f'В таблице price_table добавлены цены {len(products)} товаров'}
 
 
 class CreateStockRule(Resource):
@@ -247,27 +302,25 @@ class CreateStockRule(Resource):
     def post(self):
         args = parser.parse_args()
         data = args['data']
-        client_id = data['client_id']  # ВЗЯТЬ ИЗ ТОКЕНА
+        client_id = data['client_id']  # !!! ПОТОМ ВЗЯТЬ ИЗ ТОКЕНА
         filters = data['filters']
         actions = data['actions']
         rule = {"filters": filters, "actions": actions}
-        # добавить правило в БД
         sql = 'INSERT INTO stock_rules (client_id, rule) VALUES (%s, %s) RETURNING id'
         result = run_sql_api(sql, (client_id, rule))
         rule_id = result[0][0]
         return {'message': f'Правило добавлено. rule_id={rule_id}'}
 
 
-class CreatePriceRule(Resource):  # --- ПРОТЕСТИТЬ ---
+class CreatePriceRule(Resource):
     # @token_required
     def post(self):
         args = parser.parse_args()
         data = args['data']
-        client_id = data['client_id']  # ВЗЯТЬ ИЗ ТОКЕНА
+        client_id = data['client_id']  # !!! ПОТОМ ВЗЯТЬ ИЗ ТОКЕНА
         filters = data['filters']
         actions = data['actions']
         rule = {"filters": filters, "actions": actions}
-        # добавить правило в БД
         sql = 'INSERT INTO price_rules (client_id, rule) VALUES (%s, %s) RETURNING id'
         result = run_sql_api(sql, (client_id, rule))
         rule_id = result[0][0]
@@ -280,16 +333,16 @@ class SendStocksToMarketplaces(Resource):
     def post(self):
         args = parser.parse_args()
         data = args['data']
-        account_id = data['account_id']
+        client_id = data['client_id']
         rule_id = data['rule_id']
 
         # проверить есть ли такое правило в таблице stock_rules для данного account_id
         sql = 'SELECT rule FROM stock_rules WHERE id=%s AND account_id=%s'
-        result = run_sql_api(sql, (str(rule_id), str(account_id), ))
+        result = run_sql_api(sql, (str(rule_id), str(client_id), ))
         if not result:
             abort(400, 'Правила с таким id не существует')
         rule = result[0][0]
-        account_id = rule['account_id']
+        account_id = rule['account_id']  # --- ???
         warehouse_id = rule['warehouse_id']  # номер склада-источника
 
         # достать из БД (таблица stock_by_wh) все товары по указанному account_id и warehouse_id
@@ -380,23 +433,33 @@ class SendPricesToMarketplaces(Resource):
         return response_to_client
 
 
-class TestAPI(Resource):
-    def post(self):
-        return {'message': 'Все ОК'}
+# class TestAPI(Resource):
+#     @token_required
+#     def get(self):
+#         return {'message': 'Все ОК'}
 
+
+@app.route('/test', methods=['GET'])
+@token_required
+def test():
+    token = request.headers['x-access-token']
+    client = get_client_from_token(token)
+    return jsonify({'message': 'Все ОК', 'client': client.name})
+    # message = json.dumps({'message': 'Все ОК', 'client': client.name})
+    # return Response(message, status=200)
 
 # --- STOCKS ROUTES ---
 api.add_resource(AddStocksToDB, '/stocks')
-api.add_resource(CreateStockRule, '/stock_rules')
-api.add_resource(SendStocksToMarketplaces, '/send_stocks')
+api.add_resource(CreateStockRule, '/rules/stocks')
+api.add_resource(SendStocksToMarketplaces, '/stocks/send')
 
 # --- PRICES ROUTES ---
 api.add_resource(AddPricesToDB, '/prices')
-api.add_resource(CreatePriceRule, '/price_rules')
-api.add_resource(SendPricesToMarketplaces, '/send_prices')
+api.add_resource(CreatePriceRule, '/rules/prices')
+api.add_resource(SendPricesToMarketplaces, '/prices/send')
 
 # --- TEST ROUTE ---
-api.add_resource(TestAPI, '/test')
+# api.add_resource(TestAPI, '/test')
 
 if __name__ == '__main__':
     app.run(debug=True)

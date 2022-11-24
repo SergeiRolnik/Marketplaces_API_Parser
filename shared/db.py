@@ -3,6 +3,8 @@ from psycopg2.pool import ThreadedConnectionPool
 from psycopg2._json import Json
 from loguru import logger
 from threading import Semaphore
+import psycopg2
+import psycopg2.extras
 
 
 class ReallyThreadedConnectionPool(ThreadedConnectionPool):
@@ -144,3 +146,59 @@ def run_sql_get_product_ids(sql: str):
         if connection:
             connection_pool.putconn(connection, close=False)
 
+
+def read_from_suppliers_db():  # из таблицы suppliers получить список поставщиков
+    try:
+        connection = psycopg2.connect(DB_DSN)
+        cursor = connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # sql = '''
+        # SELECT * FROM suppliers
+        # JOIN supplier_client ON suppliers.id=supplier_client.supplier_id
+        # WHERE supplier_client.client_id=%s AND supplier_client.last_request_date<CURRENT_DATE
+        # '''\
+        #       % str(client_id)
+
+        # sql = '''
+        # SELECT * FROM suppliers
+        # JOIN supplier_client ON suppliers.id=supplier_client.supplier_id
+        # WHERE supplier_client.last_request_date<CURRENT_DATE
+        # '''
+
+        sql = 'SELECT * FROM suppliers'
+
+        cursor.execute(sql)
+        suppliers = cursor.fetchall()
+        return suppliers
+    except ConnectionError as error:
+        logger.error(f'Ошибка при подключении или чтении из таблицы suppliers: {error}')
+
+
+def update_last_request_date(client_id: int, supplier_id: int):  # обновить дату last_request_date
+    try:
+        connection = psycopg2.connect(DB_DSN)
+        connection.autocommit = True
+        cursor = connection.cursor()
+
+        sql = '''
+        UPDATE supplier_client
+        SET last_request_date=CURRENT_DATE
+        WHERE client_id=%s AND supplier_id=%s 
+        '''\
+              % (str(client_id), str(supplier_id))
+
+        cursor.execute(sql)
+    except ConnectionError as error:
+        logger.error(f'Ошибка при обновлении даты в таблице suppliers: {error}')
+
+
+def show_client_list():  # подсоединиться к БД и получить список поставщиков
+    try:
+        connection = psycopg2.connect(DB_DSN)
+        cursor = connection.cursor()
+        sql = 'SELECT * FROM client ORDER BY id'
+        cursor.execute(sql)
+        clients = cursor.fetchall()
+        return clients
+    except ConnectionError as error:
+        logger.error(f'Ошибка при подключении или чтении из таблицы client: {error}')
