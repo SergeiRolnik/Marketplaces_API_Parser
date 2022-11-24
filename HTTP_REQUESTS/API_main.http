@@ -3,7 +3,6 @@ GET http://localhost:5000/test
 Content-Type: application/json
 x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTgxMDAzNn0.lEYLehpPTQO3r5L7SAgTHLYxlwh1Zka4znb8XNQEeQ8
 
-
 ### SEND STOCKS (выслать остатки в таблицу stock_by_wh)
 // account_id: номер аккаунта клиента (не обязательный параметр)
 // warehouse_id: номер склада-источника (не обязательный параметр)
@@ -31,7 +30,6 @@ x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl
   }
 }
 
-
 ### SEND PRICES (выслать цены в таблицу price_table)
 // account_id: номер аккаунта клиента (не обязательный параметр)
 POST http://localhost:5000/prices
@@ -58,17 +56,12 @@ x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl
   }
 }
 
-
 ### CREATE STOCKS RULE
-// СОЗДАТЬ ПРАВИЛО
-// client_id: номер клиента
-// test categories: "17032630", "17033671"
 POST http://localhost:5000/rules/stocks
 Content-Type: application/json
 
 {"data":
   {
-    "client_id": 2,
     "warehouse_id": 1001,
     "filters":
     {
@@ -99,14 +92,12 @@ Content-Type: application/json
   }
 }
 
-
 ### CREATE PRICES RULE
 POST http://localhost:5000/rules/prices
 Content-Type: application/json
 
 {"data":
   {
-    "client_id": 2,
     "filters":
     {
       "categories": ["17032630"],
@@ -120,31 +111,22 @@ Content-Type: application/json
   }
 }
 
-
-###
-// ПРИНУДИТЕЛЬНО ПЕРЕДАТЬ ОСТАТКИ НА ПЛОЩАДКИ
-// warehouse_id: номер склада-источника
-// rule_id: порядковый номер заполненного правила
+### SEND STOCKS TO MP (ПРИНУДИТЕЛЬНО ПЕРЕДАТЬ ОСТАТКИ НА ПЛОЩАДКИ)
 POST http://localhost:5000/stocks/send
 Content-Type: application/json
 
 {"data":
   {
-    "client_id": 2,
     "rule_id": 18
   }
 }
 
-
-###
-// ПРИНУДИТЕЛЬНО ПЕРЕДАТЬ ЦЕНЫ НА ПЛОЩАДКИ
-// rule_id: порядковый номер заполненного правила
+### SEND PRICES (ПРИНУДИТЕЛЬНО ПЕРЕДАТЬ ЦЕНЫ НА ПЛОЩАДКИ)
 POST http://localhost:5000/prices/send
 Content-Type: application/json
 
 {"data":
   {
-    "client_id": 2,
     "rule_id": 18
   }
 }

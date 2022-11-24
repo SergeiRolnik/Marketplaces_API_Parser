@@ -1,4 +1,4 @@
-### CREATE CLIENT
+### CREATE CLIENT + ISSUE TOKEN
 POST http://localhost:5000/clients
 Content-Type: application/json
 
@@ -8,7 +8,7 @@ Content-Type: application/json
     "password": "999"
 }
 
-### CLIENT LOGIN
+### CLIENT LOGIN + ISSUE TOKEN
 POST http://localhost:5000/clients/login
 Content-Type: application/json
 Authorization: Basic s.rolnik@ecomru.ru 123
