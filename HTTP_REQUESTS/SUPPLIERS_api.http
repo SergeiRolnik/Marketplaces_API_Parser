@@ -1,0 +1,118 @@
+### SUPPLIERS (добавить, удалить, обновить поставщика)
+GET http://localhost:5000/suppliers/4
+Content-Type: application/json
+
+###
+POST http://localhost:5000/suppliers
+Content-Type: application/json
+
+{
+  "company": "test",
+  "resource_url": "test",
+  "connection_method": "api",
+  "api_key": "test",
+  "url_stocks": "test",
+  "url_prices": "test"
+}
+
+###
+PATCH http://localhost:5000/suppliers/4
+Content-Type: application/json
+
+{
+  "company": "test",
+  "resource_url": "test",
+  "connection_method": "api",
+  "api_key": "test1",
+  "url_stocks": "test1",
+  "url_prices": "test"
+}
+
+###
+DELETE http://localhost:5000/suppliers/5
+Content-Type: application/json
+
+### SUPPLIER CLIENT (добавить, удалить поставщиков для клиента)
+GET http://localhost:5000/supplier_client
+Content-Type: application/json
+x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTgxMDAzNn0.lEYLehpPTQO3r5L7SAgTHLYxlwh1Zka4znb8XNQEeQ8
+
+###
+POST http://localhost:5000/supplier_client/3
+Content-Type: application/json
+x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTgxMDAzNn0.lEYLehpPTQO3r5L7SAgTHLYxlwh1Zka4znb8XNQEeQ8
+
+###
+DELETE http://localhost:5000/supplier_client/3
+Content-Type: application/json
+x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTgxMDAzNn0.lEYLehpPTQO3r5L7SAgTHLYxlwh1Zka4znb8XNQEeQ8
+
+### MAPPINGS
+GET http://localhost:5000/mappings/1
+Content-Type: application/json
+
+### RULES (создать правило для перемещения данных из suppliers_data в stock_by_wh, price_table)
+POST http://localhost:5000/suppliers/rules
+Content-Type: application/json
+x-access-Token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTgxMDAzNn0.lEYLehpPTQO3r5L7SAgTHLYxlwh1Zka4znb8XNQEeQ8
+
+{
+      "filters": {
+        "categories": ["test", "test1"],
+        "brands": ["dogs"]
+      }
+}
+
+###
+GET http://localhost:5000/suppliers/rules
+Content-Type: application/json
+x-access-Token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTgxMDAzNn0.lEYLehpPTQO3r5L7SAgTHLYxlwh1Zka4znb8XNQEeQ8
+
+### SEND SUPPLIER DATA (принудительно передать данные с suppliers_data в stock_by_wh, price_table)
+POST http://localhost:5000/suppliers/rules/6
+Content-Type: application/json
+x-access-Token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTgxMDAzNn0.lEYLehpPTQO3r5L7SAgTHLYxlwh1Zka4znb8XNQEeQ8
+
+### CLIENTS
+GET http://localhost:5000/clients
+Content-Type: application/json
+
+###
+POST http://localhost:5000/clients
+Content-Type: application/json
+
+{
+  "name": "Клиент 6",
+  "address": "Клиент 6 адрес"
+}
+
+### ACCOUNTS
+GET http://localhost:5000/accounts
+Content-Type: application/json
+
+###
+POST http://localhost:5000/accounts
+Content-Type: application/json
+
+{
+  "mp_id": 1,
+  "client_id": 1,
+  "name": "Клиент 6",
+  "status": "Active"
+}
+
+### WAREHOUSES
+GET http://localhost:5000/warehouses
+Content-Type: application/json
+
+###
+POST http://localhost:5000/warehouses
+Content-Type: application/json
+
+{
+  "warehouse_id": 1,
+  "wh_type": "virtual",
+  "name": "Склад 1",
+  "is_rfbs": true
+}
+

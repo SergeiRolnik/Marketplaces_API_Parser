@@ -1,0 +1,150 @@
+### TEST
+GET http://localhost:5000/test
+Content-Type: application/json
+x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTgxMDAzNn0.lEYLehpPTQO3r5L7SAgTHLYxlwh1Zka4znb8XNQEeQ8
+
+
+### SEND STOCKS (выслать остатки в таблицу stock_by_wh)
+// account_id: номер аккаунта клиента (не обязательный параметр)
+// warehouse_id: номер склада-источника (не обязательный параметр)
+POST http://localhost:5000/stocks
+Content-Type: application/json
+x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTgxMDAzNn0.lEYLehpPTQO3r5L7SAgTHLYxlwh1Zka4znb8XNQEeQ8
+
+{"data":
+  {
+    "products":
+      [
+        {
+          "offer_id": "S18DS95",
+          "fbo_present": 50
+        },
+        {
+          "offer_id": "S18DS66",
+          "fbo_present": 100
+        },
+        {
+          "offer_id": "SS19K10_M",
+          "fbo_present": 200
+        }
+      ]
+  }
+}
+
+
+### SEND PRICES (выслать цены в таблицу price_table)
+// account_id: номер аккаунта клиента (не обязательный параметр)
+POST http://localhost:5000/prices
+Content-Type: application/json
+x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTgxMDAzNn0.lEYLehpPTQO3r5L7SAgTHLYxlwh1Zka4znb8XNQEeQ8
+
+{"data":
+  {
+    "products":
+      [
+        {
+          "offer_id": "S18DS95",
+          "price": 50
+        },
+        {
+          "offer_id": "S18DS66",
+          "price": 100
+        },
+        {
+          "offer_id": "SS19K10_M",
+          "price": 200
+        }
+      ]
+  }
+}
+
+
+### CREATE STOCKS RULE
+// СОЗДАТЬ ПРАВИЛО
+// client_id: номер клиента
+// test categories: "17032630", "17033671"
+POST http://localhost:5000/rules/stocks
+Content-Type: application/json
+
+{"data":
+  {
+    "client_id": 2,
+    "warehouse_id": 1001,
+    "filters":
+    {
+      "categories": ["17032630"],
+      "brands": []
+    },
+    "actions":
+    {
+      "send_stocks_to_accounts":
+      [
+        {
+          "account_id": 105,
+          "warehouse_id": 23605348895000,
+          "percentage": 30
+        },
+        {
+          "account_id": 24,
+          "warehouse_id": 23605348895000,
+          "percentage": 20
+        },
+        {
+          "account_id": 25,
+          "warehouse_id": 24813,
+          "percentage": 50
+        }
+      ]
+    }
+  }
+}
+
+
+### CREATE PRICES RULE
+POST http://localhost:5000/rules/prices
+Content-Type: application/json
+
+{"data":
+  {
+    "client_id": 2,
+    "filters":
+    {
+      "categories": ["17032630"],
+      "brands": []
+    },
+    "actions":
+    {
+      "set_prices_at": 900,
+      "conditions": {"max_price": 1000}
+    }
+  }
+}
+
+
+###
+// ПРИНУДИТЕЛЬНО ПЕРЕДАТЬ ОСТАТКИ НА ПЛОЩАДКИ
+// warehouse_id: номер склада-источника
+// rule_id: порядковый номер заполненного правила
+POST http://localhost:5000/stocks/send
+Content-Type: application/json
+
+{"data":
+  {
+    "client_id": 2,
+    "rule_id": 18
+  }
+}
+
+
+###
+// ПРИНУДИТЕЛЬНО ПЕРЕДАТЬ ЦЕНЫ НА ПЛОЩАДКИ
+// rule_id: порядковый номер заполненного правила
+POST http://localhost:5000/prices/send
+Content-Type: application/json
+
+{"data":
+  {
+    "client_id": 2,
+    "rule_id": 18
+  }
+}
