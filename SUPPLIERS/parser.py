@@ -8,7 +8,7 @@ from SUPPLIERS.config import *
 from shared.db import *
 
 logger.remove()
-logger.add(sink='SUPPLIERS/logfile.log', format="{time} {level} {message}", level="INFO")
+logger.add(sink='logs/suppliers_logfile.log', format="{time} {level} {message}", level="INFO")
 
 
 def insert_into_db(table_name: str, dataset: list, supplier_id: int):

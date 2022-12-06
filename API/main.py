@@ -14,7 +14,7 @@ from shared.auth import *
 from shared.models import *
 
 logger.remove()
-logger.add(sink='API/logfile.log', format="{time} {level} {message}", level="INFO")
+logger.add(sink='logs/api_logfile.log', format="{time} {level} {message}", level="INFO")
 api = Api(app)
 
 
@@ -223,7 +223,6 @@ class AddStocksToDB(Resource):
         account_id = data.get('account_id')  # !!! если отправляем на вирт аккаунт, тогда этот параметр не нужен
         warehouse_id = str(data.get('warehouse_id'))  # !!! если отправляем на вирт склад, тогда этот параметр не нужен
         products = data.get('products')
-
         error_message = ''  # валидация данных
         if not products:
             error_message += f'В запросе должен быть хотя бы один товар.'
@@ -233,21 +232,13 @@ class AddStocksToDB(Resource):
             error_message += 'Введите номер склада'
         if error_message:
             abort(400, error_message)
-
         # записать остатки на вирт аккаунт/склад, если не задан account_id / warehouse_id
         if not account_id:
             client = get_client_from_token(token)  # получаем клиента по токену
-
-            print('client_id', client.id)
-
             account = Account.query.filter_by(client_id=client.id).filter_by(mp_id=5).first()
             account_id = account.id
-
-            print('account_id', account_id)
-
             warehouse = Warehouse.query.filter_by(account_id=account_id).first()
             warehouse_id = warehouse.warehouse_id
-
         sql = '''
         SELECT asd.attribute_value
         FROM account_list al
@@ -261,7 +252,6 @@ class AddStocksToDB(Resource):
 
 
 # --- ADD PRICES TO DB ---
-
 class AddPricesToDB(Resource):
     @token_required
     def post(self):
@@ -270,7 +260,6 @@ class AddPricesToDB(Resource):
         token = args['x-access-token']
         account_id = data.get('account_id')  # !!! если отправляем на вирт аккаунт, тогда этот параметр не нужен
         products = data.get('products')
-
         error_message = ''  # валидация данных
         if not products:
             error_message += f'В запросе должен быть хотя бы один товар.'
@@ -278,13 +267,11 @@ class AddPricesToDB(Resource):
             error_message += f'В запросе > {MAX_NUMBER_OF_PRODUCTS} товаров.  Уменьшите кол-во товаров.'
         if error_message:
             abort(400, error_message)
-
         # записать остатки на вирт аккаунт/склад, если не задан account_id / warehouse_id
         if not account_id:
             client = get_client_from_token(token)  # получаем клиента по токену
             account = Account.query.filter_by(client_id=client.id).filter_by(mp_id=5).first()
             account_id = account.id
-
         sql = '''
         SELECT asd.attribute_value
         FROM account_list al
@@ -297,65 +284,55 @@ class AddPricesToDB(Resource):
         return {'message': f'В таблице price_table добавлены цены {len(products)} товаров'}
 
 
+# --- ADD STOCK RULE ---
 class CreateStockRule(Resource):
-    # @token_required
-    def post(self):
+    @token_required
+    def post(self, client_id):
         args = parser.parse_args()
-        data = args['data']
-        client_id = data['client_id']  # !!! ПОТОМ ВЗЯТЬ ИЗ ТОКЕНА
-        filters = data['filters']
-        actions = data['actions']
-        rule = {"filters": filters, "actions": actions}
+        rule = args['data']
         sql = 'INSERT INTO stock_rules (client_id, rule) VALUES (%s, %s) RETURNING id'
         result = run_sql_api(sql, (client_id, rule))
         rule_id = result[0][0]
-        return {'message': f'Правило добавлено. rule_id={rule_id}'}
+        return {'message': f'Правило добавлено в таблицу stock_rules. rule_id={rule_id}'}
 
 
+# --- ADD PRICE RULE ---
 class CreatePriceRule(Resource):
-    # @token_required
-    def post(self):
+    @token_required
+    def post(self, client_id):
         args = parser.parse_args()
-        data = args['data']
-        client_id = data['client_id']  # !!! ПОТОМ ВЗЯТЬ ИЗ ТОКЕНА
-        filters = data['filters']
-        actions = data['actions']
-        rule = {"filters": filters, "actions": actions}
+        rule = args['data']
         sql = 'INSERT INTO price_rules (client_id, rule) VALUES (%s, %s) RETURNING id'
         result = run_sql_api(sql, (client_id, rule))
         rule_id = result[0][0]
-        return {'message': f'Правило добавлено. rule_id={rule_id}'}
+        return {'message': f'Правило добавлено в таблицу price_rules. rule_id={rule_id}'}
 
 
 # --- UPDATE STOCKS --- (ДОБАВИТЬ МАППИНГ OFFER_ID) ---
 class SendStocksToMarketplaces(Resource):
-    # @token_required
-    def post(self):
-        args = parser.parse_args()
-        data = args['data']
-        client_id = data['client_id']
-        rule_id = data['rule_id']
-
-        # проверить есть ли такое правило в таблице stock_rules для данного account_id
-        sql = 'SELECT rule FROM stock_rules WHERE id=%s AND account_id=%s'
+    @token_required
+    def post(self, client_id, rule_id):
+        sql = 'SELECT rule FROM stock_rules WHERE id=%s AND client_id=%s'  # проверить есть ли такое правило
         result = run_sql_api(sql, (str(rule_id), str(client_id), ))
+
+        # !!! --- нужно проверить принадлежит ли warehouse_id из правила данному клиенту ---
+
         if not result:
             abort(400, 'Правила с таким id не существует')
         rule = result[0][0]
-        account_id = rule['account_id']  # --- ???
-        warehouse_id = rule['warehouse_id']  # номер склада-источника
+        # account_id = rule['account_id']  # --- ???
+        warehouse_id = rule['warehouse_id']  # номер склада-источника (если не указан, брать остатки с виртуального склада)
 
-        # достать из БД (таблица stock_by_wh) все товары по указанному account_id и warehouse_id
+        # достать из БД (таблица stock_by_wh) все товары по указанному warehouse_id
         sql = '''
         SELECT account_id, warehouse_id, offer_id, fbo_present 
-        FROM stock_by_wh WHERE account_id=%s AND warehouse_id=%s
+        FROM stock_by_wh WHERE warehouse_id=%s
         '''
-        stocks = run_sql_api(sql, (account_id, warehouse_id, ))
-        # stocks - список кортежей (account_id, warehouse_id, offer_id, stock)
+        stocks = run_sql_api(sql, (warehouse_id, ))  # список кортежей (account_id, warehouse_id, offer_id, stock)
         stocks = [
             {
-                'account_id': product[0],
-                'warehouse_id': product[1],
+                # 'account_id': product[0],
+                # 'warehouse_id': product[1],
                 'offer_id': product[2],
                 'stock': product[3]
             }
@@ -364,45 +341,35 @@ class SendStocksToMarketplaces(Resource):
         stocks = apply_filter(stocks, rule.get('filters'))  # применить указанные в правиле фильтры
 
         response_to_client = []
-        # делим все товары на части
-        for i in range(0, total_num_of_stocks, NUMBER_OF_PRODUCTS_TO_PROCESS):
+        for i in range(0, total_num_of_stocks, NUMBER_OF_PRODUCTS_TO_PROCESS):  # делим все товары на части
             stocks_batch = stocks[i: i + NUMBER_OF_PRODUCTS_TO_PROCESS]
             actions = rule['actions']
             accounts = apply_action(stocks_batch, actions, 'stocks')  # применить правило/действие(action)
-            # accounts - список словарей: {'account_id': 1001, 'warehouse_id': 777, 'products': [{'offer_id': 'ABC', 'stock': 100}, ...]}
 
-            # запускаем многопоточность (отдельный поток для каждого аккаунта)
-            with ThreadPoolExecutor() as executor:
+            # !!! --- применить маппинг - функция map_offer_ids ---
+
+            # accounts - список словарей: {'account_id': 1001, 'warehouse_id': 777, 'products': [{'offer_id': 'ABC', 'stock': 100}, ...]}
+            with ThreadPoolExecutor() as executor:  # запускаем многопоточность
                 futures = [executor.submit(process_account_data, account) for account in accounts]
                 for future in futures:
                     response_to_client.append(future.result())
-
         logger.info(f'Запрос выполнен успешно. URL:{request.base_url}')
         return response_to_client
 
 
 # --- UPDATE PRICES --- (ДОБАВИТЬ МАППИНГ OFFER_ID) ---
 class SendPricesToMarketplaces(Resource):
-    # @token_required
-    def post(self):
-        args = parser.parse_args()
-        data = args['data']
-        client_id = data['client_id']
-        rule_id = data['rule_id']
-
-        # проверить есть ли такое правило в таблице price_rules для данного client_id
-        sql = 'SELECT rule FROM price_rules WHERE id=%s AND client_id=%s'
+    @token_required
+    def post(self, client_id, rule_id):
+        sql = 'SELECT rule FROM price_rules WHERE id=%s AND client_id=%s'  # проверить есть ли такое правило
         result = run_sql_api(sql, (str(rule_id), str(client_id), ))
         if not result:
             abort(400, 'Правила с таким id не существует')
         rule = result[0][0]
-
-        # получить список account_id по client_id
-        sql = 'SELECT account_id FROM account_list WHERE client_id=%s'
+        sql = 'SELECT account_id FROM account_list WHERE client_id=%s'  # получить список account_id по client_id
         result = run_sql_api(sql, (str(client_id), ))
         account_ids = list(result[0])
         account_ids = str(account_ids).strip('[]')
-
         # достать из таблицы price_table все товары по указанному account_id
         sql = f'SELECT account_id, offer_id, price FROM price_table WHERE account_id IN ({account_ids})'
         prices = run_sql_api(sql, ())  # prices - список кортежей (offer_id, price)
@@ -415,51 +382,37 @@ class SendPricesToMarketplaces(Resource):
             for product in prices]
         total_num_of_prices = len(prices)
         prices = apply_filter(prices, rule.get('filters'))  # применить указанные в правиле фильтры
-
         response_to_client = []
-        # делим все товары на части
-        for i in range(0, total_num_of_prices, NUMBER_OF_PRODUCTS_TO_PROCESS):
+        for i in range(0, total_num_of_prices, NUMBER_OF_PRODUCTS_TO_PROCESS):   # делим все товары на части
             prices_batch = prices[i: i + NUMBER_OF_PRODUCTS_TO_PROCESS]
             accounts = apply_action(prices_batch, rule.get('actions'), 'prices')  # применить правило/действие(action)
             # accounts - список словарей: {'account_id': 1001, 'prices': [{'offer_id': 'ABC', 'price': 100}, ...]}
-
-            # запускаем многопоточность (отдельный поток для каждого аккаунта)
-            with ThreadPoolExecutor() as executor:
+            with ThreadPoolExecutor() as executor:  # запускаем многопоточность
                 futures = [executor.submit(process_account_data, account) for account in accounts]
                 for future in futures:
                     response_to_client.append(future.result())
-
         logger.info(f'Запрос выполнен успешно. URL:{request.base_url}')
         return response_to_client
 
 
-# class TestAPI(Resource):
-#     @token_required
-#     def get(self):
-#         return {'message': 'Все ОК'}
+class TestAPI(Resource):
+    @token_required
+    def get(self, client_id):
+        return {'message': 'Все ОК', 'client_id': client_id}
 
 
-@app.route('/test', methods=['GET'])
-@token_required
-def test():
-    token = request.headers['x-access-token']
-    client = get_client_from_token(token)
-    return jsonify({'message': 'Все ОК', 'client': client.name})
-    # message = json.dumps({'message': 'Все ОК', 'client': client.name})
-    # return Response(message, status=200)
-
-# --- STOCKS ROUTES ---
+# --- STOCKS URLS ---
 api.add_resource(AddStocksToDB, '/stocks')
 api.add_resource(CreateStockRule, '/rules/stocks')
-api.add_resource(SendStocksToMarketplaces, '/stocks/send')
+api.add_resource(SendStocksToMarketplaces, '/stocks/send/<int:rule_id>')
 
-# --- PRICES ROUTES ---
+# --- PRICES URLS ---
 api.add_resource(AddPricesToDB, '/prices')
 api.add_resource(CreatePriceRule, '/rules/prices')
-api.add_resource(SendPricesToMarketplaces, '/prices/send')
+api.add_resource(SendPricesToMarketplaces, '/prices/send/<int:rule_id>')
 
-# --- TEST ROUTE ---
-# api.add_resource(TestAPI, '/test')
+# --- TEST URL ---
+api.add_resource(TestAPI, '/test')
 
 if __name__ == '__main__':
     app.run(debug=True)

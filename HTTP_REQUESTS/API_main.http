@@ -1,7 +1,7 @@
 ### TEST
 GET http://localhost:5000/test
 Content-Type: application/json
-x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTgxMDAzNn0.lEYLehpPTQO3r5L7SAgTHLYxlwh1Zka4znb8XNQEeQ8
+x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTk1Nzg1N30.VeWBeWJws__LfXC37KceHM072iaw0FfIysA2GNd19n0
 
 ### SEND STOCKS (выслать остатки в таблицу stock_by_wh)
 // account_id: номер аккаунта клиента (не обязательный параметр)
@@ -59,14 +59,15 @@ x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl
 ### CREATE STOCKS RULE
 POST http://localhost:5000/rules/stocks
 Content-Type: application/json
+x-access-Token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTk1Nzg1N30.VeWBeWJws__LfXC37KceHM072iaw0FfIysA2GNd19n0
 
 {"data":
   {
-    "warehouse_id": 1001,
+    "warehouse_id": 444,
     "filters":
     {
       "categories": ["17032630"],
-      "brands": []
+      "brands": ["Adidas", "Nike"]
     },
     "actions":
     {
@@ -95,6 +96,7 @@ Content-Type: application/json
 ### CREATE PRICES RULE
 POST http://localhost:5000/rules/prices
 Content-Type: application/json
+x-access-Token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTk1Nzg1N30.VeWBeWJws__LfXC37KceHM072iaw0FfIysA2GNd19n0
 
 {"data":
   {
@@ -105,28 +107,18 @@ Content-Type: application/json
     },
     "actions":
     {
-      "set_prices_at": 900,
-      "conditions": {"max_price": 1000}
+      "set_prices_at": 999,
+      "conditions": {"max_price": 555}
     }
   }
 }
 
 ### SEND STOCKS TO MP (ПРИНУДИТЕЛЬНО ПЕРЕДАТЬ ОСТАТКИ НА ПЛОЩАДКИ)
-POST http://localhost:5000/stocks/send
+POST http://localhost:5000/stocks/send/18
 Content-Type: application/json
-
-{"data":
-  {
-    "rule_id": 18
-  }
-}
+x-access-Token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTk1Nzg1N30.VeWBeWJws__LfXC37KceHM072iaw0FfIysA2GNd19n0
 
 ### SEND PRICES (ПРИНУДИТЕЛЬНО ПЕРЕДАТЬ ЦЕНЫ НА ПЛОЩАДКИ)
-POST http://localhost:5000/prices/send
+POST http://localhost:5000/prices/send/18
 Content-Type: application/json
-
-{"data":
-  {
-    "rule_id": 18
-  }
-}
+x-access-Token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTk1Nzg1N30.VeWBeWJws__LfXC37KceHM072iaw0FfIysA2GNd19n0

@@ -7,7 +7,7 @@ from PARSER.main import process_account_data, delete_duplicate_records_from_db
 from shared.auth import token_required
 
 logger.remove()
-logger.add(sink='PARSER/logfile.log', format="{time} {level} {message}", level="INFO")
+logger.add(sink='logs/parser_logfile.log', format="{time} {level} {message}", level="INFO")
 
 app = Flask(__name__)
 api = Api(app)

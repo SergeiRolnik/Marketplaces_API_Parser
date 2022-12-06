@@ -1,12 +1,12 @@
+from loguru import logger
+import pandas as pd
+from datetime import date
 from shared.db import run_sql, run_sql_api, run_sql_account_list, run_sql_delete, get_table_cols, connection_pool
 from PARSER.config import TEST_ACCOUNTS, EXCLUDE_ACCOUNTS, DB_TABLES, PRINT_DB_INSERTS
 from MARKETPLACES.ozon.ozon import OzonApi
 from MARKETPLACES.wb.wb import WildberriesApi
 from MARKETPLACES.yandex.yandex import YandexMarketApi
 from concurrent.futures import ThreadPoolExecutor
-from loguru import logger
-import pandas as pd
-from datetime import date
 
 
 def create_mp_object(account: dict):  # на вход словарь {(account_id, mp_id): [(attribute_id, attribute_value), ...]}
@@ -84,7 +84,7 @@ def append_sales_percent(prices: list, sales_percents: list) -> list:
 def process_account_data(account: dict):
     # account - словарь {(account_id, mp_id): [(attribute_id, attribute_value, key_attr), (), ...]}
     account_id, mp_id = list(account.keys())[0]
-    # print('Обрабатывается аккаунт', account)
+    print('Обрабатывается аккаунт', account)
     attrs = list(account.values())[0]
     api_key = list(filter(lambda x: x[2], attrs))[0][1]
     mp_object = create_mp_object(account)  # инициализация объекта класса МП
@@ -263,7 +263,7 @@ def process_account_data(account: dict):
 
 def main():
     logger.remove()
-    logger.add(sink='PARSER/logfile.log', format="{time} {level} {message}", level="INFO")
+    logger.add(sink='logs/parser_logfile.log', format="{time} {level} {message}", level="INFO")
     logger.info('Работа скрипта начата')
 
     # sql = 'SELECT id FROM marketplaces_list ORDER BY id'
@@ -279,9 +279,10 @@ def main():
             FROM account_list al
             JOIN account_service_data asd ON al.id = asd.account_id
             JOIN service_attr sa ON asd.attribute_id = sa.id
-            WHERE al.status_1 = 'Active' AND al.mp_id = %s
+            WHERE al.mp_id = %s
             ORDER BY al.id, asd.attribute_id
             '''
+            # если добавлять только активные аккаунты, WHERE al.status_1 = 'Active' AND
             mp_accounts = run_sql_account_list(sql, (str(mp_id), ))
             accounts_groupped = {}
             processed_attr_values = []
