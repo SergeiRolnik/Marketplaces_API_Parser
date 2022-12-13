@@ -40,7 +40,12 @@ class YandexMarketApi:
             logger.error(f'Ошибка в выполнении запроса. Статус код:{response.status_code} URL:{url}')
 
     def post(self, url: str, params: dict):
-        response = requests.post(url=url, headers=self.get_headers(), json=params)
+        response = requests.post(url=url, headers=self.get_headers(), data=params)
+
+        print(self.get_headers())
+        print(url)
+        print(params)
+
         if response.status_code == 200:
             return response.json()
         else:
@@ -134,7 +139,7 @@ class YandexMarketApi:
                                 'warehouse_id': warehouse['id'],
                                 'warehouse_name': warehouse['name'],
                                 'offer_id': product.get('shopSku'),
-                                'product_id': str(product.get('marketSku')),  # ошибка KeyError 15/11/2022
+                                'product_id': str(product.get('marketSku')),
                                 'fbo_present': sum(item['count'] for item in warehouse['stocks'] if item['type'] == 'AVAILABLE'),
                                 'fbs_present': 0  # для ЯМ записываем только остатки FBY
                             }
@@ -185,7 +190,15 @@ class YandexMarketApi:
 
             print('market_skus_chunk', market_skus_chunk)
 
-            params = {'offers': market_skus_chunk}
+            # params = {'offers': market_skus_chunk}
+            params = {"offers":
+                        [
+                            {
+                                "offerId": "Т2890"
+                            }
+                        ]
+            }
+
             response = self.post(self.get_url(URL_YANDEX_RECOMMENDED_PRICES), params)
             print('response in get_recommended_prices', response)
             if not response:
