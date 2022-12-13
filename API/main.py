@@ -264,10 +264,6 @@ class AddPricesToDB(Resource):
         if error_message:
             abort(400, error_message)
 
-        # находим account_id по api_id
-        # account = Account.query.filter_by(api_id=api_id).first()
-        # account_id = account.id
-
         products = [{'offer_id': product[0], 'price': product[1]} for product in zip(offer_id_list, price_list)]
         insert_into_db('price_table', products, 0, '', api_id, add_date=True)
         return {'message': f'В таблицу price_table добавлены цены {len(products)} товаров'}, 201
