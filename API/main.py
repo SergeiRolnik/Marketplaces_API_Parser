@@ -99,15 +99,6 @@ def apply_action(products: list, actions: dict, product_list: str) -> list:
     # {'account_id': 1001, 'prices': [{'offer_id': 'ABC', 'price': 999}, ...]}
 
 
-# функция создает соотв. объект класса для отправки запроса на площадку
-# def create_mp_object(mp_id: int, client_id: str, api_key: str, campaign_id: str):
-#     if mp_id == 1:
-#         return OzonApi(client_id, api_key)
-#     if mp_id == 2:
-#         return YandexMarketApi(client_id, api_key, campaign_id)
-#     if mp_id == 3:
-#         return WildberriesApi(client_id, api_key)  # вместо api_key подставляем client_id в соотв. с данными в таблице account_list
-
 def create_mp_object(account: dict):  # на вход словарь {(account_id, mp_id): [(attribute_id, attribute_value), ...]}
     mp_id = list(account.keys())[0][1]
     attribute_values = [item[1] for item in list(account.values())[0]]
