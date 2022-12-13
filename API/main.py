@@ -124,7 +124,8 @@ def create_mp_object(account: dict):  # на вход словарь {(account_i
 def insert_into_db(table_name: str, dataset: list, account_id: int, warehouse_id: str, api_id: str, add_date=False):
     if dataset:
         for row in dataset:
-            row['account_id'] = account_id
+            if table_name != 'client_margin':  # для таблицы margin не записываем account_id
+                row['account_id'] = account_id
             row['api_id'] = api_id
             if warehouse_id:
                 row['warehouse_id'] = warehouse_id
@@ -210,7 +211,7 @@ def process_account_data(account: dict):
 
 parser = reqparse.RequestParser()
 parser.add_argument('data', type=dict, location='json', required=True)
-parser.add_argument('x-access-token', type=str, location='headers', required=True)
+# parser.add_argument('x-access-token', type=str, location='headers', required=True)
 
 
 # --- ADD STOCKS TO DB ---
@@ -253,35 +254,58 @@ class AddStocksToDB(Resource):
 
 # --- ADD PRICES TO DB ---
 class AddPricesToDB(Resource):
-    @token_required
+    # @token_required
     def post(self):
         args = parser.parse_args()
         data = args['data']
-        token = args['x-access-token']
-        account_id = data.get('account_id')  # !!! если отправляем на вирт аккаунт, тогда этот параметр не нужен
-        products = data.get('products')
-        error_message = ''  # валидация данных
-        if not products:
+        api_id = data['api_id']
+        offer_id_list = data['offer_id']
+        price_list = data['price']
+
+        # валидация данных
+        error_message = ''
+        if not offer_id_list or not price_list:
             error_message += f'В запросе должен быть хотя бы один товар.'
-        if len(products) > MAX_NUMBER_OF_PRODUCTS:
+        if len(offer_id_list) != len(price_list):
+            error_message += f'Длина списка offer_id должна совпадать с длиной списка price.'
+        if len(offer_id_list) > MAX_NUMBER_OF_PRODUCTS:
             error_message += f'В запросе > {MAX_NUMBER_OF_PRODUCTS} товаров.  Уменьшите кол-во товаров.'
         if error_message:
             abort(400, error_message)
-        # записать остатки на вирт аккаунт/склад, если не задан account_id / warehouse_id
-        if not account_id:
-            client = get_client_from_token(token)  # получаем клиента по токену
-            account = Account.query.filter_by(client_id=client.id).filter_by(mp_id=5).first()
-            account_id = account.id
-        sql = '''
-        SELECT asd.attribute_value
-        FROM account_list al
-        JOIN account_service_data asd ON al.id = asd.account_id
-        JOIN service_attr sa ON asd.attribute_id = sa.id
-        WHERE al.status_1 = 'Active' AND al.id = %s AND sa.key_attr
-        '''
-        api_id = run_sql_account_list(sql, (str(account_id), ))[0][0]
-        insert_into_db('price_table', products, account_id, '', api_id, add_date=True)
-        return {'message': f'В таблице price_table добавлены цены {len(products)} товаров'}
+
+        # находим account_id по api_id
+        # account = Account.query.filter_by(api_id=api_id).first()
+        # account_id = account.id
+
+        products = [{'offer_id': product[0], 'price': product[1]} for product in zip(offer_id_list, price_list)]
+        insert_into_db('price_table', products, 0, '', api_id, add_date=True)
+        return {'message': f'В таблицу price_table добавлены цены {len(products)} товаров'}, 201
+
+
+# --- ADD MARGINS TO DB ---
+class AddMarginsToDB(Resource):
+    # @token_required
+    def post(self):
+        args = parser.parse_args()
+        data = args['data']
+        api_id = data['api_id']
+        offer_id_list = data['offer_id']
+        margin_list = data['min_margin']
+
+        # валидация данных
+        error_message = ''
+        if not offer_id_list or not margin_list:
+            error_message += f'В запросе должен быть хотя бы один товар.'
+        if len(offer_id_list) != len(margin_list):
+            error_message += f'Длина списка offer_id должна совпадать с длиной списка margin.'
+        if len(offer_id_list) > MAX_NUMBER_OF_PRODUCTS:
+            error_message += f'В запросе > {MAX_NUMBER_OF_PRODUCTS} товаров.  Уменьшите кол-во товаров.'
+        if error_message:
+            abort(400, error_message)
+
+        products = [{'offer_id': product[0], 'min_margin': product[1]} for product in zip(offer_id_list, margin_list)]
+        insert_into_db('client_margin', products, 0, '', api_id, add_date=True)
+        return {'message': f'В таблицу margin добавлена маржа для {len(products)} товаров'}, 201
 
 
 # --- ADD STOCK RULE ---
@@ -408,6 +432,7 @@ api.add_resource(SendStocksToMarketplaces, '/stocks/send/<int:rule_id>')
 
 # --- PRICES URLS ---
 api.add_resource(AddPricesToDB, '/prices')
+api.add_resource(AddMarginsToDB, '/margins')
 api.add_resource(CreatePriceRule, '/rules/prices')
 api.add_resource(SendPricesToMarketplaces, '/prices/send/<int:rule_id>')
 

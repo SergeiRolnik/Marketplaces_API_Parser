@@ -11,7 +11,8 @@ from MARKETPLACES.yandex.config import \
     URL_YANDEX_INFO, \
     URL_YANDEX_PRICES, \
     URL_YANDEX_STOCKS, \
-    URL_YANDEX_SHOW_PRICES
+    URL_YANDEX_SHOW_PRICES, \
+    URL_YANDEX_RECOMMENDED_PRICES
 
 
 class YandexMarketApi:
@@ -43,6 +44,9 @@ class YandexMarketApi:
         if response.status_code == 200:
             return response.json()
         else:
+
+            print('response', response.json())
+
             logger.error(f'Ошибка в выполнении запроса. Статус код:{response.status_code} URL:{url}')
 
     def append_product_ids(self, products: list) -> list:  # ИСПОЛЬЗУЕТСЯ ТОЛЬКО ДЛЯ update_prices
@@ -119,7 +123,7 @@ class YandexMarketApi:
                     sales_percents.append(
                         {
                             'offer_id': product['shopSku'],
-                            # 'product_id': str(product['marketSku']),
+                            'product_id': product['marketSku'],
                             'sales_percent': list(filter(lambda x: x['type'] == 'FEE', product['tariffs']))[0]['percent']
                         }
                     )
@@ -157,7 +161,7 @@ class YandexMarketApi:
                 result = response['result']
                 products += [
                     {
-                        'product_id': str(product.get('marketSku')),
+                        'product_id': product.get('marketSku'),
                         'price': self.get_dict_value(product, 'price', 'value')
                     }
                     for product in result['offers']]
@@ -171,6 +175,32 @@ class YandexMarketApi:
                 if products:
                     yield products
                 break
+
+    # !!! НОВАЯ ФУНКЦИЯ (ЗАГРУЖАЕТ РЕКОММЕНДОВАННЫЕ ЦЕНЫ)
+    def get_recommended_prices(self, market_skus: list) -> list:  # GET /offer-prices/suggestions
+        MAX_NUMBER_OF_PRODUCTS = 1000
+        products = []
+        for i in range(0, len(market_skus), MAX_NUMBER_OF_PRODUCTS):
+            market_skus_chunk = market_skus[i: i + MAX_NUMBER_OF_PRODUCTS]  # market_skus_chunk - части списка skus по 1000 шт.
+
+            print('market_skus_chunk', market_skus_chunk)
+
+            params = {'offers': market_skus_chunk}
+            response = self.post(self.get_url(URL_YANDEX_RECOMMENDED_PRICES), params)
+            print('response in get_recommended_prices', response)
+            if not response:
+                break
+            if response.get('status') == 'OK':
+                result = response['result']
+                products += [
+                    {
+                        'product_id': product.get('marketSku'),
+                        'recommended_price':
+                            list(filter(lambda item: item['type'] == 'BUYBOX', product['priceSuggestion']))[0]['price']
+                    }
+                    for product in result['offers']]
+            time.sleep(SLEEP_TIME)
+        return products
 
     # --- ФУНКЦИИ UPDATE (API STOCKS/PRICES) ---
     def update_prices(self, prices: list) -> list:  # POST /offer-prices/updates

@@ -34,25 +34,44 @@ x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl
 // account_id: номер аккаунта клиента (не обязательный параметр)
 POST http://localhost:5000/prices
 Content-Type: application/json
-x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTgxMDAzNn0.lEYLehpPTQO3r5L7SAgTHLYxlwh1Zka4znb8XNQEeQ8
+// x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTgxMDAzNn0.lEYLehpPTQO3r5L7SAgTHLYxlwh1Zka4znb8XNQEeQ8
 
 {"data":
   {
-    "products":
-      [
-        {
-          "offer_id": "S18DS95",
-          "price": 50
-        },
-        {
-          "offer_id": "S18DS66",
-          "price": 100
-        },
-        {
-          "offer_id": "SS19K10_M",
-          "price": 200
-        }
-      ]
+  "api_id": "12345",
+  "offer_id": [
+    "S18DS95",
+    "S18DS66",
+    "SS19K10_M"
+  ],
+  "price": [
+    50,
+    100,
+    200
+  ]
+  }
+}
+
+
+### SEND MARGINS (выслать цены в таблицу client_margin)
+// account_id: номер аккаунта клиента (не обязательный параметр)
+POST http://localhost:5000/margins
+Content-Type: application/json
+// x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTgxMDAzNn0.lEYLehpPTQO3r5L7SAgTHLYxlwh1Zka4znb8XNQEeQ8
+
+{"data":
+  {
+  "api_id": "12345",
+  "offer_id": [
+    "S18DS95",
+    "S18DS66",
+    "SS19K10_M"
+  ],
+  "min_margin": [
+    10,
+    12,
+    15
+  ]
   }
 }
 
