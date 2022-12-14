@@ -1,12 +1,12 @@
+from loguru import logger
+import pandas as pd
+from datetime import date
 from shared.db import run_sql, run_sql_api, run_sql_account_list, run_sql_delete, get_table_cols, connection_pool
 from PARSER.config import TEST_ACCOUNTS, EXCLUDE_ACCOUNTS, DB_TABLES, PRINT_DB_INSERTS
 from MARKETPLACES.ozon.ozon import OzonApi
 from MARKETPLACES.wb.wb import WildberriesApi
 from MARKETPLACES.yandex.yandex import YandexMarketApi
 from concurrent.futures import ThreadPoolExecutor
-from loguru import logger
-import pandas as pd
-from datetime import date
 
 
 def create_mp_object(account: dict):  # на вход словарь {(account_id, mp_id): [(attribute_id, attribute_value), ...]}
@@ -50,6 +50,11 @@ def append_offer_ids(products: list, account_id: int) -> list:
     df = pd.DataFrame.from_dict(products)
     df['offer_id'] = df['product_id'].map(mappings)
     df = df.where(df.notnull(), None)
+
+    # ----------
+    df['product_id'] = df['product_id'].fillna(0)
+    df['product_id'] = df['product_id'].astype(int)
+
     return df.to_dict('records')
 
 
@@ -76,15 +81,29 @@ def delete_duplicate_records_from_db():
 def append_sales_percent(prices: list, sales_percents: list) -> list:
     prices = pd.DataFrame.from_dict(prices)
     sales_percents = pd.DataFrame.from_dict(sales_percents)
-    prices_with_sales_percents = pd.merge(prices, sales_percents, on='offer_id', how='left')
+    prices_with_sales_percents = pd.merge(prices, sales_percents, on='product_id', how='left')
     prices_with_sales_percents = prices_with_sales_percents.where(prices_with_sales_percents.notnull(), None)
+
+    # ----------------
+    prices_with_sales_percents['product_id'] = prices_with_sales_percents['product_id'].fillna(0)
+    prices_with_sales_percents['product_id'] = prices_with_sales_percents['product_id'].astype(int)
+
     return prices_with_sales_percents.to_dict('records')
+
+
+# --- !!! НОВАЯ ФУНКЦИЯ (ДОБАВЛЯЕТ ЦЕНУ BUYBOX)
+def append_recommended_prices(prices: list, recommended_prices: list) -> list:
+    prices = pd.DataFrame.from_dict(prices)
+    recommended_prices = pd.DataFrame.from_dict(recommended_prices)
+    prices_with_recommended_prices = pd.merge(prices, recommended_prices, on='product_id', how='left')  # !!! on product_id ???
+    prices_with_recommended_prices = prices_with_recommended_prices.where(prices_with_recommended_prices.notnull(), None)
+    return prices_with_recommended_prices.to_dict('records')
 
 
 def process_account_data(account: dict):
     # account - словарь {(account_id, mp_id): [(attribute_id, attribute_value, key_attr), (), ...]}
     account_id, mp_id = list(account.keys())[0]
-    # print('Обрабатывается аккаунт', account)
+    print('Обрабатывается аккаунт', account)
     attrs = list(account.values())[0]
     api_key = list(filter(lambda x: x[2], attrs))[0][1]
     mp_object = create_mp_object(account)  # инициализация объекта класса МП
@@ -160,9 +179,36 @@ def process_account_data(account: dict):
 
         # --- PRICES --- (!!! ДОБАВИТЬ ЗАГРУЗКУ ЦЕН ЧЕРЕЗ МЕТОД /stats/skus)
         for prices_chunk in mp_object.get_prices():  # GET /offer-prices
-            prices_chunk = append_offer_ids(prices_chunk, account_id)  # НОВАЯ ФУНКЦИЯ
-            # !!! ДОБАВИТЬ В prices_chunk значение sales_percent из списка sales_percents
-            prices_chunk = append_sales_percent(prices_chunk, sales_percents)
+
+            print('prices_chunk 1', prices_chunk[0:10])
+
+            # prices_chunk = append_offer_ids(prices_chunk, account_id)
+
+            # prices_chunk = [{'product_id': int(product['product_id']), 'price': product['price']}
+            #                   for product in prices_chunk]  # перевод из float (pandas) в int
+
+            # print('prices_chunk 2', prices_chunk[0:10])
+
+            # prices_chunk = append_sales_percent(prices_chunk, sales_percents)
+
+            print('prices_chunk 3', prices_chunk[0:10])
+
+            # !!! BUYBOX PRICE
+            # market_skus = [int(product['product_id']) for product in prices_chunk]
+            # market_skus = [{'marketSku': product['product_id']} for product in prices_chunk]
+
+            # market_skus = [{'marketSku': 101799698702}]
+            market_skus = [{'offerId': 'Т2890'}]
+            # market_skus = []
+
+            # print('market_skus', market_skus[0:10])
+
+            recommended_prices = mp_object.get_recommended_prices(market_skus)
+
+            # print('recommended_prices', recommended_prices[0:10])
+
+            prices_chunk = append_recommended_prices(prices_chunk, recommended_prices)
+            prices_chunk = [str(product['product_id']) for product in prices_chunk]  # смена типа с int на str
             insert_into_db('price_table', prices_chunk, account_id, api_key, add_date=True)
 
     if mp_id == 3:  # ---------------------------------- ВБ (FBO) -----------------------------------------------
@@ -263,7 +309,7 @@ def process_account_data(account: dict):
 
 def main():
     logger.remove()
-    logger.add(sink='PARSER/logfile.log', format="{time} {level} {message}", level="INFO")
+    logger.add(sink='logs/parser_logfile.log', format="{time} {level} {message}", level="INFO")
     logger.info('Работа скрипта начата')
 
     # sql = 'SELECT id FROM marketplaces_list ORDER BY id'
@@ -279,9 +325,10 @@ def main():
             FROM account_list al
             JOIN account_service_data asd ON al.id = asd.account_id
             JOIN service_attr sa ON asd.attribute_id = sa.id
-            WHERE al.status_1 = 'Active' AND al.mp_id = %s
+            WHERE al.mp_id = %s
             ORDER BY al.id, asd.attribute_id
             '''
+            # если добавлять только активные аккаунты, WHERE al.status_1 = 'Active' AND
             mp_accounts = run_sql_account_list(sql, (str(mp_id), ))
             accounts_groupped = {}
             processed_attr_values = []
