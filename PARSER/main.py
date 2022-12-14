@@ -195,13 +195,17 @@ def process_account_data(account: dict):
 
             # !!! BUYBOX PRICE
             # market_skus = [int(product['product_id']) for product in prices_chunk]
-            market_skus = [{'marketSku': product['product_id']} for product in prices_chunk]
+            # market_skus = [{'marketSku': product['product_id']} for product in prices_chunk]
 
-            print('market_skus', market_skus[0:10])
+            # market_skus = [{'marketSku': 101799698702}]
+            market_skus = [{'offerId': 'Т2890'}]
+            # market_skus = []
+
+            # print('market_skus', market_skus[0:10])
 
             recommended_prices = mp_object.get_recommended_prices(market_skus)
 
-            print('recommended_prices', recommended_prices[0:10])
+            # print('recommended_prices', recommended_prices[0:10])
 
             prices_chunk = append_recommended_prices(prices_chunk, recommended_prices)
             prices_chunk = [str(product['product_id']) for product in prices_chunk]  # смена типа с int на str

@@ -42,9 +42,9 @@ class YandexMarketApi:
     def post(self, url: str, params: dict):
         response = requests.post(url=url, headers=self.get_headers(), data=params)
 
-        print(self.get_headers())
-        print(url)
-        print(params)
+        print('headers', self.get_headers())
+        print('url', url)
+        print('data', params)
 
         if response.status_code == 200:
             return response.json()
@@ -190,14 +190,8 @@ class YandexMarketApi:
 
             print('market_skus_chunk', market_skus_chunk)
 
-            # params = {'offers': market_skus_chunk}
-            params = {"offers":
-                        [
-                            {
-                                "offerId": "Т2890"
-                            }
-                        ]
-            }
+            params = {'offers': market_skus_chunk}
+            # params = {"offers": [{"offerId": "Т2890"}]}
 
             response = self.post(self.get_url(URL_YANDEX_RECOMMENDED_PRICES), params)
             print('response in get_recommended_prices', response)

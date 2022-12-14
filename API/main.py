@@ -202,7 +202,17 @@ def process_account_data(account: dict):
 
 parser = reqparse.RequestParser()
 parser.add_argument('data', type=dict, location='json', required=True)
-# parser.add_argument('x-access-token', type=str, location='headers', required=True)
+parser.add_argument('x-access-token', type=str, location='headers', required=True)
+
+parser_price = reqparse.RequestParser()
+parser_price.add_argument('api_id', type=str, required=True)
+parser_price.add_argument('offer_id', type=str, action='append', required=True)
+parser_price.add_argument('price', type=float, action='append', required=True)
+
+parser_margin = reqparse.RequestParser()
+parser_margin.add_argument('api_id', type=str, required=True)
+parser_margin.add_argument('offer_id', type=str, action='append', required=True)
+parser_margin.add_argument('min_margin', type=float, action='append', required=True)
 
 
 # --- ADD STOCKS TO DB ---
@@ -247,11 +257,10 @@ class AddStocksToDB(Resource):
 class AddPricesToDB(Resource):
     # @token_required
     def post(self):
-        args = parser.parse_args()
-        data = args['data']
-        api_id = data['api_id']
-        offer_id_list = data['offer_id']
-        price_list = data['price']
+        args = parser_price.parse_args()
+        api_id = args['api_id']
+        offer_id_list = args['offer_id']
+        price_list = args['price']
 
         # валидация данных
         error_message = ''
@@ -273,11 +282,10 @@ class AddPricesToDB(Resource):
 class AddMarginsToDB(Resource):
     # @token_required
     def post(self):
-        args = parser.parse_args()
-        data = args['data']
-        api_id = data['api_id']
-        offer_id_list = data['offer_id']
-        margin_list = data['min_margin']
+        args = parser_margin.parse_args()
+        api_id = args['api_id']
+        offer_id_list = args['offer_id']
+        margin_list = args['min_margin']
 
         # валидация данных
         error_message = ''

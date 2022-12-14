@@ -25,31 +25,34 @@ def main():
     '''
     api_id_list = run_sql_account_list(sql, ())
 
-    for api_id in api_id_list:
+    for api_id in api_id_list:  # цикл по все api_id
 
         # выборка из таблицы price_table для конкретного api_id
         sql = '''
-        select * from (
-        select account_id, offer_id, price, sales_percent, api_id, date, row_number() 
-        over(partition by offer_id order by date desc) as row_num
+        select * from
+        (
+        select offer_id, price, sales_percent, date, row_number() over(partition by offer_id order by date desc) as row_num
         from price_table pt
         ) t
-        where t.row_num = 1
+        where t.row_num = 1 and t.api_id = %s
         '''
-        prices = run_sql_account_list(sql, ())
+        prices = run_sql_account_list(sql, (api_id, ))  # список кортежей (offer_id, price, sales_percent, date)
 
+        for product in prices:
 
-        # выборка из таблицы margin (все записи)
-        sql = '''
-        select * from (
-        select offer_id, min_margin, account_id as api_id, date, row_number() 
-        over(partition by offer_id order by date desc) as row_num
-        from margin
-        ) t
-        where
-        t.row_num = 1
-        '''
-        margins = run_sql_account_list(sql, ())
+            sql = 'select offer_id, min_margin from client_margin'
+
+            # выборка из таблицы margin (все записи)
+            sql = '''
+            select * from (
+            select offer_id, min_margin, account_id as api_id, date, row_number() 
+            over(partition by offer_id order by date desc) as row_num
+            from margin
+            ) t
+            where
+            t.row_num = 1
+            '''
+            margins = run_sql_account_list(sql, ())
 
     # получить из prices и margins - price / min_margin / commission
     data = get_min_price(price, min_margin, commission)

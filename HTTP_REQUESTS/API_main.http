@@ -36,7 +36,6 @@ POST http://localhost:5000/prices
 Content-Type: application/json
 // x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTgxMDAzNn0.lEYLehpPTQO3r5L7SAgTHLYxlwh1Zka4znb8XNQEeQ8
 
-{"data":
   {
   "api_id": "12345",
   "offer_id": [
@@ -50,7 +49,7 @@ Content-Type: application/json
     200
   ]
   }
-}
+
 
 
 ### SEND MARGINS (выслать цены в таблицу client_margin)
@@ -59,7 +58,6 @@ POST http://localhost:5000/margins
 Content-Type: application/json
 // x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTgxMDAzNn0.lEYLehpPTQO3r5L7SAgTHLYxlwh1Zka4znb8XNQEeQ8
 
-{"data":
   {
   "api_id": "12345",
   "offer_id": [
@@ -73,7 +71,6 @@ Content-Type: application/json
     15
   ]
   }
-}
 
 ### CREATE STOCKS RULE
 POST http://localhost:5000/rules/stocks
