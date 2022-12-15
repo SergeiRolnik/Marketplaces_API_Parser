@@ -142,7 +142,7 @@ def process_account_data(account: dict):
         # --- STOCKS ---
         for products_chunk in mp_object.get_info():  # GET /campaigns/{campaignId}/offer-mapping-entries
             shop_skus_chunk = [product['offer_id'] for product in products_chunk]  # выделяем shopSkus
-            # insert_into_db('product_list', products_chunk, account_id, api_key)  # БОЛЬШЕ НЕ ЗАПИСЫВАЕМ В ТАБЛИЦУ product_list
+            insert_into_db('product_list', products_chunk, account_id, api_key)  # БОЛЬШЕ НЕ ЗАПИСЫВАЕМ В ТАБЛИЦУ product_list
             products_chunk, sales_percents_chunk = mp_object.get_stocks(shop_skus_chunk)  # POST /stats/skus
             insert_into_db('stock_by_wh', products_chunk, account_id, api_key, add_date=True)
             sales_percents += sales_percents_chunk
@@ -269,7 +269,7 @@ def process_account_data(account: dict):
 
 def main():
     logger.remove()
-    logger.add(sink='PARSER/logfile.log', format="{time} {level} {message}", level="INFO")
+    logger.add(sink='logs/parser_logfile.log', format="{time} {level} {message}", level="INFO")
     logger.info('Работа скрипта начата')
 
     # sql = 'SELECT id FROM marketplaces_list ORDER BY id'

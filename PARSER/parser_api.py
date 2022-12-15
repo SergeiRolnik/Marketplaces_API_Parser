@@ -6,7 +6,7 @@ from shared.db import run_sql_account_list
 from PARSER.main import process_account_data, delete_duplicate_records_from_db
 
 logger.remove()
-logger.add(sink='PARSER/logfile.log', format="{time} {level} {message}", level="INFO")
+logger.add(sink='logs/parse_mp_logfile.log', format="{time} {level} {message}", level="INFO")
 
 app = Flask(__name__)
 api = Api(app)
