@@ -11,7 +11,8 @@ from MARKETPLACES.yandex.config import \
     URL_YANDEX_INFO, \
     URL_YANDEX_PRICES, \
     URL_YANDEX_STOCKS, \
-    URL_YANDEX_SHOW_PRICES
+    URL_YANDEX_SHOW_PRICES, \
+    URL_YANDEX_RECOMMENDED_PRICES
 
 
 class YandexMarketApi:
@@ -181,6 +182,37 @@ class YandexMarketApi:
                 if products:
                     yield products
                 break
+
+    # !!! НОВАЯ ФУНКЦИЯ (ЗАГРУЖАЕТ РЕКОММЕНДОВАННЫЕ ЦЕНЫ)  добавлена 15.12.22
+    def get_recommended_prices(self, market_skus: list) -> list:  # GET /offer-prices/suggestions
+        MAX_NUMBER_OF_PRODUCTS = 1000
+        products = []
+        for i in range(0, len(market_skus), MAX_NUMBER_OF_PRODUCTS):
+            market_skus_chunk = market_skus[i: i + MAX_NUMBER_OF_PRODUCTS]
+
+            print('market_skus_chunk', market_skus_chunk[0:20])  # ---------------------------
+
+            params = {'offers': market_skus_chunk}
+            # params = {"offers": [{"offerId": "Т2890"}]}
+
+            response = self.post(self.get_url(URL_YANDEX_RECOMMENDED_PRICES), params)
+
+            print('response in get_recommended_prices', response)  # -------------------------
+
+            if not response:
+                break
+            if response.get('status') == 'OK':
+                result = response['result']
+                products += [
+                    {
+                        'product_id': product.get('marketSku'),
+                        'recommended_price':
+                            list(filter(lambda item: item['type'] == 'BUYBOX', product['priceSuggestion']))[0][
+                                'price']
+                    }
+                    for product in result['offers']]
+            time.sleep(SLEEP_TIME)
+        return products
 
     # --- ФУНКЦИИ UPDATE (API STOCKS/PRICES) ---
     def update_prices(self, prices: list) -> list:  # POST /offer-prices/updates
