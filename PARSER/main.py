@@ -81,6 +81,15 @@ def append_sales_percent(prices: list, sales_percents: list) -> list:
     return prices_with_sales_percents.to_dict('records')
 
 
+# --- !!! НОВАЯ ФУНКЦИЯ (ДОБАВЛЯЕТ ЦЕНУ BUYBOX) добавлена 15.12.22
+def append_recommended_prices(prices: list, recommended_prices: list) -> list:
+    prices = pd.DataFrame.from_dict(prices)
+    recommended_prices = pd.DataFrame.from_dict(recommended_prices)
+    prices_with_recommended_prices = pd.merge(prices, recommended_prices, on='product_id', how='left')  # !!! on product_id ???
+    prices_with_recommended_prices = prices_with_recommended_prices.where(prices_with_recommended_prices.notnull(), None)
+    return prices_with_recommended_prices.to_dict('records')
+
+
 def process_account_data(account: dict):
     # account - словарь {(account_id, mp_id): [(attribute_id, attribute_value, key_attr), (), ...]}
     account_id, mp_id = list(account.keys())[0]
@@ -142,9 +151,9 @@ def process_account_data(account: dict):
         # --- STOCKS ---
         for products_chunk in mp_object.get_info():  # GET /campaigns/{campaignId}/offer-mapping-entries
             shop_skus_chunk = [product['offer_id'] for product in products_chunk]  # выделяем shopSkus
-            insert_into_db('product_list', products_chunk, account_id, api_key)  # БОЛЬШЕ НЕ ЗАПИСЫВАЕМ В ТАБЛИЦУ product_list
+            # insert_into_db('product_list', products_chunk, account_id, api_key)  # НЕ ЗАПИСЫВАЕМ В ТАБЛИЦУ product_list
             products_chunk, sales_percents_chunk = mp_object.get_stocks(shop_skus_chunk)  # POST /stats/skus
-            insert_into_db('stock_by_wh', products_chunk, account_id, api_key, add_date=True)
+            insert_into_db('stock_by_wh', products_chunk, account_id, api_key, add_date=True)  # -----------
             sales_percents += sales_percents_chunk
 
             # --- WAREHOUSES (FBY или FBS?) ---
@@ -160,15 +169,16 @@ def process_account_data(account: dict):
 
         # --- PRICES --- (!!! ДОБАВИТЬ ЗАГРУЗКУ ЦЕН ЧЕРЕЗ МЕТОД /stats/skus)
         for prices_chunk in mp_object.get_prices():  # GET /offer-prices
-
-            print('prices_chunk before append_offer_ids', prices_chunk[0:20])
-
-            prices_chunk = append_offer_ids(prices_chunk, account_id)  # НОВАЯ ФУНКЦИЯ
-
-            print('prices_chunk after append_offer_ids', prices_chunk[0:20])
-
-            # !!! ДОБАВИТЬ В prices_chunk значение sales_percent из списка sales_percents
+            prices_chunk = append_offer_ids(prices_chunk, account_id)
             prices_chunk = append_sales_percent(prices_chunk, sales_percents)
+
+            # --- ADD RECOMMENDED PRICE / BUYBOX ------ добавлено 15.12.22 -------------------------------------
+            market_skus = [{'marketSku': int(float(product['product_id']))}
+                           for product in prices_chunk if product['product_id'] != 'None']
+            recommended_prices = mp_object.get_recommended_prices(market_skus)
+            prices_chunk = append_recommended_prices(prices_chunk, recommended_prices)
+            # --------------------------------------------------------------------------------------------------
+
             insert_into_db('price_table', prices_chunk, account_id, api_key, add_date=True)
 
     if mp_id == 3:  # ---------------------------------- ВБ (FBO) -----------------------------------------------
