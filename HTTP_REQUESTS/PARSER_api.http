@@ -1,0 +1,24 @@
+### ПРИНУДИТЕЛЬНО СОБРАТЬ ОСТАТКИ И ЦЕНЫ С МАРКЕТПЛЕЙСОВ (ЛОКАЛЬНО)
+POST http://localhost:5000/parse_mp
+Content-Type: application/json
+
+{
+    "account_id": 115
+}
+
+### ПРИНУДИТЕЛЬНО СОБРАТЬ ОСТАТКИ И ЦЕНЫ С МАРКЕТПЛЕЙСОВ (СЕРВЕР)
+POST http://178.154.221.218:5066/parse_mp
+Content-Type: application/json
+
+{
+    "account_id": 115
+}
+
+### ТЕСТ FLASK (ЛОКАЛЬНО)
+GET http://localhost:5000/test
+Content-Type: application/json
+x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjcsImFjdGl2ZV9oZXgiOiI5ZDg4NWRlYmMyZDQ1OTZiYWE5NWRmODY3M2EwNDdmMiIsImV4cCI6MTY3MTc4MTMzOX0.g0IGI7mC61Rnu022C2lK2vv6GUebcGsuMlaUvcEXI4M
+
+### ТЕСТ FLASK (СЕРВЕР)
+GET http://178.154.221.218:5066/test
+Content-Type: application/json

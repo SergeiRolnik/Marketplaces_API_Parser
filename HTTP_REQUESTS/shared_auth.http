@@ -1,0 +1,19 @@
+### CREATE CLIENT + ISSUE TOKEN
+POST http://localhost:5000/clients
+Content-Type: application/json
+
+{
+    "name": "Компания №2",
+    "login": "s.rolnik@ecomru.edu",
+    "password": "999"
+}
+
+### CLIENT LOGIN + ISSUE TOKEN
+POST http://localhost:5000/clients/login
+Content-Type: application/json
+Authorization: Basic s.rolnik@ecomru.ru 123
+
+### GET CLIENT LIST
+GET http://localhost:5000/clients
+Content-Type: application/json
+x-access-token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOjIyLCJhY3RpdmVfaGV4IjoiN2U4ODkzMjU3NmZlM2FjYTUxZDgxMTU1NzhmMWI0YjIiLCJleHAiOjE2NzE3MjM4MjB9.83bxYWJ32l-HDH279zIXCpf-MJUWfljZH_jPEBYQ4y4

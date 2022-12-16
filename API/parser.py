@@ -7,7 +7,7 @@ from MARKETPLACES.sber.sber import SberApi
 from shared.db import run_sql_api
 
 logger.remove()
-logger.add(sink='API/logfile.log', format="{time} {level} {message}", level="INFO")
+logger.add(sink='logs/api_logfile.log', format="{time} {level} {message}", level="INFO")
 
 
 # функция применяет выборку к списку товаров products в соотв. с фильтром

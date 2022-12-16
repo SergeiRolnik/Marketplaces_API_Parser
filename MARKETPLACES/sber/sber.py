@@ -1,86 +1,68 @@
-from pprint import pprint
 import requests
-import time
-from MARKETPLACES.sber.config import \
-    SBER_API_KEY, \
-    URL_SBER_PRICES, \
-    URL_SBER_STOCKS, \
-    URL_SBER_INFO
+from loguru import logger
+from MARKETPLACES.sber.config import STOCK_UPDATE_URL, PRICE_UPDATE_URL
 
-class SberApi():
+
+class SberApi:
 
     def __init__(self, api_key: str):
-        self.api_key = api_key
+        self.api_key = api_key  # !!! токен передается не в заголовке, а в теле запроса
 
-    def get_headers(self) -> dict:   # токен передается не в заголовке, а в теле запроса
+    def get_headers(self) -> dict:
         headers = {'Content-Type': 'application/json'}
         return headers
 
     def get(self, url: str, params: dict):
-        return requests.get(url=url, headers=self.get_headers(), params=params).json()
+        response = requests.get(url=url, headers=self.get_headers(), params=params)
+        if response.ok:  # вместо response.status_code чтобы включить код 201
+            return response.json()
+        else:
+            logger.error(f'Ошибка в выполнении запроса Статус код:{response.status_code} URL:{url}')
 
     def post(self, url: str, params: dict):
-        return requests.post(url=url, headers=self.get_headers(), data=params).json()
+        response = requests.post(url=url, headers=self.get_headers(), data=params)
+        if response.ok:
+            return response.json()
+        else:
+            logger.error(f'Ошибка в выполнении запроса Статус код:{response.status_code} URL:{url}')
 
-    def dumps(self, params: dict) -> dict:
+    def dumps(self, params: dict) -> dict:  # !!! нужна ли эта функция???
         return params
         # return json.dumps(params, ensure_ascii=False)
 
-    def get_info(self) -> dict: # нет метода, который дает список товаров
-        # вставить код
-        return self.get(URL_SBER_INFO, self.dumps(params))
+    # def get_info(self) -> dict:  # нет метода, который дает список товаров
+    #     # вставить код
+    #     return self.get(URL_SBER_INFO, self.dumps(params))
 
-    def update_stocks(self, stocks: list) -> dict:
-    # stocks - список из словарей {'offerId': str, 'quantity': int}
+    def update_stocks(self, stocks: list) -> dict:  # на вход {offer_id / stock}
+        stocks = [
+            {
+                'offerId': product['offer_id'],
+                'quantity': product['stock']
+            }
+            for product in stocks]
         params = {
                     'meta': {},
                     'data': {
                         'token': self.api_key,
-                        'stocks': stocks
+                        'stocks': stocks  # список словарей {'offerId': str, 'quantity': int}
                             },
                 }
-        return self.post(URL_SBER_STOCKS, self.dumps(params))
-        # пример ответа {'success': 1,  'meta': {}, 'data': {}}
+        return self.post(STOCK_UPDATE_URL, self.dumps(params))
 
-    def update_prices(self, prices: list) -> dict:
-    # prices - список из словарей {'offerId': str, 'price': int, 'isDeleted': bool}
+    def update_prices(self, prices: list) -> dict:  # на вход {offer_id / price}
+        prices = [
+            {
+                'offerId': product['offer_id'],
+                'price': product['price'],
+                'isDeleted': False
+            }
+            for product in prices]
         params = {
                     'meta': {},
                     'data': {
                         'token': self.api_key,
-                        'prices': prices
+                        'prices': prices  # список словарей {'offerId': str, 'price': int, 'isDeleted': bool}
                             }
                 }
-        return self.post(URL_SBER_PRICES, self.dumps(params))
-        # пример ответа {'success': 1,  'meta': {}, 'data': {}}
-
-    def make_update_stocks_list(self, products: list, warehouse_id: str):
-        update_stocks_list = []
-
-        for product in products:  # products - список словарей {'product_id: ....., 'stock': .....}
-            offer_id = product['offer_id']
-            stock = product['stock']
-
-            # обращение к БД, по id найти offer_id
-            # offer_id = run_sql_query('SELECT offer_id FROM product_list WHERE id=' + str(product_id))
-            update_stocks_list.append({
-                'offerId': offer_id,
-                'quantity': stock,
-                })
-
-        return update_stocks_list
-
-    def process_mp_response(self, response: dict, account_id: int, products: list):
-        return response
-
-
-def main():
-    sber = SberApi(SBER_API_KEY)  # токен передается в теле запроса 'data': { 'token':
-
-    for product in sber.get_info():
-        time.sleep(1)
-        pprint(product['offer'], product['offer'])
-
-
-if __name__ == '__main__':
-    main()
+        return self.post(PRICE_UPDATE_URL, self.dumps(params))
