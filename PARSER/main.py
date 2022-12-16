@@ -294,7 +294,7 @@ def main():
     futures = []
     with ThreadPoolExecutor() as executor:
 
-        for mp_id in [1, 2, 3, 15]:  # цикл по маркетплейсам
+        for mp_id in [2]:  # цикл по маркетплейсам
             sql = '''
             SELECT al.id, al.mp_id, asd.attribute_id, asd.attribute_value, sa.key_attr
             FROM account_list al
