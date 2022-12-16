@@ -34,24 +34,27 @@ class YandexMarketApi:
 
     def get(self, url: str, params: dict):
         response = requests.get(url=url, headers=self.get_headers(), params=params)
+
+        # print('headers', self.get_headers())
+        # print('url', url)
+        # print('data', params)
+
         if response.status_code == 200:
             return response.json()
         else:
             logger.error(f'Ошибка в выполнении запроса. Статус код:{response.status_code} URL:{url}')
 
     def post(self, url: str, params: dict):
-        response = requests.post(url=url, headers=self.get_headers(), data=params)
+        response = requests.post(url=url, headers=self.get_headers(), json=params)
 
-        print('headers', self.get_headers())
-        print('url', url)
-        print('data', params)
+        # print('headers', self.get_headers())
+        # print('url', url)
+        # print('data', params)
+        # print('response', response)
 
         if response.status_code == 200:
             return response.json()
         else:
-
-            print('response', response.json())
-
             logger.error(f'Ошибка в выполнении запроса. Статус код:{response.status_code} URL:{url}')
 
     def append_product_ids(self, products: list) -> list:  # ИСПОЛЬЗУЕТСЯ ТОЛЬКО ДЛЯ update_prices
@@ -128,7 +131,7 @@ class YandexMarketApi:
                     sales_percents.append(
                         {
                             'offer_id': product['shopSku'],
-                            'product_id': product['marketSku'],
+                            # 'product_id': str(product['marketSku']),
                             'sales_percent': list(filter(lambda x: x['type'] == 'FEE', product['tariffs']))[0]['percent']
                         }
                     )
@@ -139,7 +142,7 @@ class YandexMarketApi:
                                 'warehouse_id': warehouse['id'],
                                 'warehouse_name': warehouse['name'],
                                 'offer_id': product.get('shopSku'),
-                                'product_id': str(product.get('marketSku')),
+                                'product_id': str(product.get('marketSku')),  # ошибка KeyError 15/11/2022
                                 'fbo_present': sum(item['count'] for item in warehouse['stocks'] if item['type'] == 'AVAILABLE'),
                                 'fbs_present': 0  # для ЯМ записываем только остатки FBY
                             }
@@ -166,7 +169,7 @@ class YandexMarketApi:
                 result = response['result']
                 products += [
                     {
-                        'product_id': product.get('marketSku'),
+                        'product_id': str(product.get('marketSku')),
                         'price': self.get_dict_value(product, 'price', 'value')
                     }
                     for product in result['offers']]
@@ -181,31 +184,36 @@ class YandexMarketApi:
                     yield products
                 break
 
-    # !!! НОВАЯ ФУНКЦИЯ (ЗАГРУЖАЕТ РЕКОММЕНДОВАННЫЕ ЦЕНЫ)
+    # !!! НОВАЯ ФУНКЦИЯ (ЗАГРУЖАЕТ РЕКОММЕНДОВАННЫЕ ЦЕНЫ)  добавлена 15.12.22
     def get_recommended_prices(self, market_skus: list) -> list:  # GET /offer-prices/suggestions
         MAX_NUMBER_OF_PRODUCTS = 1000
         products = []
+
+        # ------  REMOVE DUPLICATES FROM market_skus ---------
+        seen = set()
+        new_market_skus = []
+        for d in market_skus:
+            t = tuple(d.items())
+            if t not in seen:
+                seen.add(t)
+                new_market_skus.append(d)
+        market_skus = new_market_skus
+
         for i in range(0, len(market_skus), MAX_NUMBER_OF_PRODUCTS):
-            market_skus_chunk = market_skus[i: i + MAX_NUMBER_OF_PRODUCTS]  # market_skus_chunk - части списка skus по 1000 шт.
-
-            print('market_skus_chunk', market_skus_chunk)
-
+            market_skus_chunk = market_skus[i: i + MAX_NUMBER_OF_PRODUCTS]
             params = {'offers': market_skus_chunk}
-            # params = {"offers": [{"offerId": "Т2890"}]}
-
             response = self.post(self.get_url(URL_YANDEX_RECOMMENDED_PRICES), params)
-            print('response in get_recommended_prices', response)
             if not response:
                 break
             if response.get('status') == 'OK':
                 result = response['result']
-                products += [
-                    {
-                        'product_id': product.get('marketSku'),
-                        'recommended_price':
-                            list(filter(lambda item: item['type'] == 'BUYBOX', product['priceSuggestion']))[0]['price']
-                    }
-                    for product in result['offers']]
+                for product in result['offers']:
+                    recommended_price = None  # если нет цены BUYBOX, оставляем поле recommended_price пустым
+                    for item in product['priceSuggestion']:
+                        if item['type'] == 'BUYBOX':
+                            recommended_price = item['price']
+                            break
+                    products.append({'product_id': str(product.get('marketSku')), 'recommended_price': recommended_price})
             time.sleep(SLEEP_TIME)
         return products
 

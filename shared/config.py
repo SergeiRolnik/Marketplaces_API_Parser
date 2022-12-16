@@ -9,8 +9,8 @@ if exists(dotenv_path):
     load_dotenv(dotenv_path)
 
 APP_ENV = os.environ.get('APP_ENV')
-MAX_NUM_OF_CONNECTIONS = 8  # максимально число соединений в пуле
-ATTR_VIRT = 10  # идентификатор атрибута вирт аккаунта в таблице account_service_data
+MAX_NUM_OF_CONNECTIONS = 16  # максимально число соединений в пуле
+ATTR_VIRT = 8
 
 # --------------------------------------------------------------------------------
 #                        DEVELOPMENT SETTINGS
