@@ -176,7 +176,12 @@ def process_account_data(account: dict):
             market_skus = [{'marketSku': int(float(product['product_id']))}
                            for product in prices_chunk if product['product_id'] != 'None']
             recommended_prices = mp_object.get_recommended_prices(market_skus)
-            prices_chunk = append_recommended_prices(prices_chunk, recommended_prices)
+
+            try:
+                prices_chunk = append_recommended_prices(prices_chunk, recommended_prices)
+            except KeyError as error:
+                logger.error(f'Ошибка {error} при добавлении recommended_price / account_id={account_id}')
+
             # --------------------------------------------------------------------------------------------------
 
             insert_into_db('price_table', prices_chunk, account_id, api_key, add_date=True)

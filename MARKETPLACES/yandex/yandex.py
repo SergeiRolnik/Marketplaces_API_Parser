@@ -35,9 +35,9 @@ class YandexMarketApi:
     def get(self, url: str, params: dict):
         response = requests.get(url=url, headers=self.get_headers(), params=params)
 
-        print('headers', self.get_headers())
-        print('url', url)
-        print('data', params)
+        # print('headers', self.get_headers())
+        # print('url', url)
+        # print('data', params)
 
         if response.status_code == 200:
             return response.json()
@@ -47,10 +47,10 @@ class YandexMarketApi:
     def post(self, url: str, params: dict):
         response = requests.post(url=url, headers=self.get_headers(), json=params)
 
-        print('headers', self.get_headers())
-        print('url', url)
-        print('data', params)
-        print('response', response)
+        # print('headers', self.get_headers())
+        # print('url', url)
+        # print('data', params)
+        # print('response', response)
 
         if response.status_code == 200:
             return response.json()
