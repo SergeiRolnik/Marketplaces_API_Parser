@@ -287,14 +287,10 @@ def main():
     logger.add(sink='logs/parser_logfile.log', format="{time} {level} {message}", level="INFO")
     logger.info('Работа скрипта начата')
 
-    # sql = 'SELECT id FROM marketplaces_list ORDER BY id'
-    # mps = run_sql_account_list(sql, ())
-    # mp_ids = [item[0] for item in mps]
-
     futures = []
     with ThreadPoolExecutor() as executor:
 
-        for mp_id in [2]:  # цикл по маркетплейсам
+        for mp_id in [1, 2, 3, 15]:  # цикл по маркетплейсам
             sql = '''
             SELECT al.id, al.mp_id, asd.attribute_id, asd.attribute_value, sa.key_attr
             FROM account_list al
