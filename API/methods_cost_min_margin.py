@@ -90,6 +90,6 @@ class AddMarginsToDB(Resource):
         return {'message': f'В таблицу margin добавлена маржа для {len(products)} товаров'}, 201
 
 
-class TestAPI(Resource):
+class TestAPICostMargin(Resource):
     def get(self):
         return {'message': 'Cost and margins methods OK'}

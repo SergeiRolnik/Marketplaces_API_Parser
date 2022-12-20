@@ -1,15 +1,8 @@
-from flask import Flask, request, abort
-from flask_restful import Api, Resource, reqparse
-from loguru import logger
+from flask import abort
+from flask_restful import Resource, reqparse
 import time
 from shared.db import run_sql_account_list
 from PARSER.main import process_account_data, delete_duplicate_records_from_db
-
-logger.remove()
-logger.add(sink='logs/parse_mp_logfile.log', format="{time} {level} {message}", level="INFO")
-
-app = Flask(__name__)
-api = Api(app)
 
 parser = reqparse.RequestParser()
 parser.add_argument('account_id', type=int, required=True, help='Номер аккаунта должен быть целым числом')
@@ -38,22 +31,12 @@ class ParseStocksAndPrices(Resource):
             accounts_groupped.setdefault((account_id, mp_id), []).append((attr_id, attr_value, key_attr))
         process_account_data(accounts_groupped)
         delete_duplicate_records_from_db()
-        logger.info(f'Работа метода API parse_mp закончена. '
-                    f'Аккаунт {account_id}. '
-                    f'Время выполнения {time.time() - start_time} сек.')
+        # logger.info(f'Работа метода API parse_mp закончена. '
+        #             f'Аккаунт {account_id}. '
+        #             f'Время выполнения {time.time() - start_time} сек.')
         return {'message': f'Остатки и цены по аккаунту {account_id} собраны и записаны в БД'}
 
 
-class TestAPI(Resource):
-    def post(self):
-        return {'message': 'Все ОК'}
-
-
-# --- ROUTES ---
-api.add_resource(ParseStocksAndPrices, '/parse_mp')
-
-# --- TEST ROUTE ---
-api.add_resource(TestAPI, '/test')
-
-if __name__ == '__main__':
-    app.run(debug=True)
+class TestAPIParseMPByAccount(Resource):
+    def get(self):
+        return {'message': 'Parse marketplaces by account method OK'}

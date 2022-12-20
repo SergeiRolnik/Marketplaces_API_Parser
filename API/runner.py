@@ -4,7 +4,8 @@ import os
 from loguru import logger
 from shared.models import db
 from shared.db import DB_DSN
-from API.methods_cost_min_margin import AddPricesToDB, AddMarginsToDB, TestAPI
+from API.methods_cost_min_margin import AddPricesToDB, AddMarginsToDB, TestAPICostMargin
+from API.methods_parse_mp_by_account import ParseStocksAndPrices, TestAPIParseMPByAccount
 
 logger.remove()
 logger.add(sink='logs/api_logfile.log', format="{time} {level} {message}", level="INFO")
@@ -21,7 +22,13 @@ api.add_resource(AddPricesToDB, '/prices')
 api.add_resource(AddMarginsToDB, '/margins')
 
 # --- TEST URL ---
-api.add_resource(TestAPI, '/test')
+api.add_resource(TestAPICostMargin, '/test_cost_margin')
+
+# --- ROUTES ---
+api.add_resource(ParseStocksAndPrices, '/parse_mp')
+
+# --- TEST URL ---
+api.add_resource(TestAPIParseMPByAccount, '/test_parse_mp_by_account')
 
 # --- PRICES URLS ---
 # api.add_resource(CreatePriceRule, '/rules/prices')
