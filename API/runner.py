@@ -40,4 +40,5 @@ api.add_resource(TestAPIParseMPByAccount, '/test_parse_mp_by_account')
 # app.add_url_rule('/mappings/<int:mapping_id>', view_func=MappingOffersView.as_view('delete_mapping'), methods=['DELETE'])
 # app.add_url_rule('/mappings/<int:mapping_id>', view_func=MappingOffersView.as_view('update_mapping'), methods=['POST', 'PATCH'])
 
-app.run(debug=True)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
