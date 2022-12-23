@@ -102,7 +102,7 @@ def run_sql_api(sql: str, values: tuple):
 
     if len(values) == 2 and sql.find('category_id') == -1:
         values = list(values)
-        values[1] = Json(values[1]) # если идет запись правила, преобразовать его в json объект
+        values[1] = Json(values[1])  # если идет запись правила, преобразовать его в json объект
         values = tuple(values)
 
     try:
@@ -151,22 +151,7 @@ def read_from_suppliers_db():  # из таблицы suppliers получить 
     try:
         connection = psycopg2.connect(DB_DSN)
         cursor = connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-        # sql = '''
-        # SELECT * FROM suppliers
-        # JOIN supplier_client ON suppliers.id=supplier_client.supplier_id
-        # WHERE supplier_client.client_id=%s AND supplier_client.last_request_date<CURRENT_DATE
-        # '''\
-        #       % str(client_id)
-
-        # sql = '''
-        # SELECT * FROM suppliers
-        # JOIN supplier_client ON suppliers.id=supplier_client.supplier_id
-        # WHERE supplier_client.last_request_date<CURRENT_DATE
-        # '''
-
         sql = 'SELECT * FROM suppliers'
-
         cursor.execute(sql)
         suppliers = cursor.fetchall()
         return suppliers
@@ -202,3 +187,26 @@ def show_client_list():  # подсоединиться к БД и получи�
         return clients
     except ConnectionError as error:
         logger.error(f'Ошибка при подключении или чтении из таблицы client: {error}')
+
+
+# НОВАЯ ФУНКЦИЯ 16.12.22 ВЫВОДИТ ДАННЫЕ В ВИДЕ СПИСКА СЛОВАРЕЙ
+def run_sql_api_dict(sql: str, values: tuple):
+
+    if sql.find('price_rules') != -1:  # если идет запись правила, преобразовать его в json объект
+        values = list(values)
+        values[3] = Json(values[3])
+        values = tuple(values)
+
+    try:
+        connection = connection_pool.getconn()
+        connection.autocommit = True
+        cursor = connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute(sql, values)
+        result = cursor.fetchall()
+        result = [dict(row) for row in result]
+        return result
+    except Exception as error:
+        logger.error(f'Ошибка {error} при обработке SQL запроса {sql}')
+    finally:
+        if connection:
+            connection_pool.putconn(connection, close=False)

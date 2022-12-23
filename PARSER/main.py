@@ -169,8 +169,12 @@ def process_account_data(account: dict):
 
         # --- PRICES --- (!!! ДОБАВИТЬ ЗАГРУЗКУ ЦЕН ЧЕРЕЗ МЕТОД /stats/skus)
         for prices_chunk in mp_object.get_prices():  # GET /offer-prices
+
+            # print('prices_chunk before append_offer_ids', prices_chunk[0:20])  # ------------------
             prices_chunk = append_offer_ids(prices_chunk, account_id)
+            # print('prices_chunk after append_offer_ids', prices_chunk[0:20])  # ------------------
             prices_chunk = append_sales_percent(prices_chunk, sales_percents)
+            # print('prices_chunk after append_sales_percent', prices_chunk[0:20])  # ------------------
 
             # --- ADD RECOMMENDED PRICE / BUYBOX ------ добавлено 15.12.22 -------------------------------------
             market_skus = [{'marketSku': int(float(product['product_id']))}
