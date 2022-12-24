@@ -219,7 +219,7 @@ class YandexMarketApi:
 
     # --- ФУНКЦИИ UPDATE (API STOCKS/PRICES) ---
     def update_prices(self, prices: list) -> list:  # POST /offer-prices/updates
-        prices = self.append_product_ids(prices)
+        # prices = self.append_product_ids(prices)
         products = []
         for product in prices:
             products.append(

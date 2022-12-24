@@ -192,10 +192,10 @@ def show_client_list():  # подсоединиться к БД и получи�
 # НОВАЯ ФУНКЦИЯ 16.12.22 ВЫВОДИТ ДАННЫЕ В ВИДЕ СПИСКА СЛОВАРЕЙ
 def run_sql_api_dict(sql: str, values: tuple):
 
-    if sql.find('price_rules') != -1:  # если идет запись правила, преобразовать его в json объект
-        values = list(values)
-        values[3] = Json(values[3])
-        values = tuple(values)
+    # if sql.find('price_rules') != -1:  # если идет запись правила, преобразовать его в json объект
+    #     values = list(values)
+    #     values[3] = Json(values[3])
+    #     values = tuple(values)
 
     try:
         connection = connection_pool.getconn()
