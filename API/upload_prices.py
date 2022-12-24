@@ -36,8 +36,12 @@ def apply_filters(products: list, filters: dict) -> list:
 
 
 def apply_actions(products: list, actions: str) -> list:
+    # !!! add data validation
     if actions == 'set_min_price':
         for product in products:
+            if product['price'] - product['recommended_price'] > 1:
+                product['price'] = product['recommended_price'] - 1
+
             if not product['price'] == product['recommended_price']:
                 if product['min_price_fbm'] < product['recommended_price']:
                     product['price'] = product['recommended_price'] - 1
@@ -61,18 +65,14 @@ def process_account_data(account: dict) -> dict:
     ORDER BY asd1.attribute_id
     '''
     mp_service_attrs = run_sql_account_list(sql, (api_id, ))
-    print('mp_service_attrs', mp_service_attrs)
-
     mp_id = mp_service_attrs[0][0]
 
     # --- initialize marketplace class object ---
     mp_object = create_mp_object(mp_service_attrs)
-    print(mp_object)
     prices = [{'product_id': int(item['product_id']), 'price': item['price']} for item in prices]
-    print('--- > final prices to send to marketplace', prices)
 
     # --- send data to marketplace to update prices ---
-    mp_response = mp_object.update_prices(prices)  # --- TESTING WITHOUT SENDING DATA TO MP ---
+    mp_response = mp_object.update_prices(prices)
 
     return {'mp_id': mp_id, 'marketplace response': mp_response}
 
@@ -90,19 +90,14 @@ def main():
             rule = price_rule['rule']
             client_id = price_rule['client_id']
             api_id = price_rule['target_api_id']  # yandex market api_id
-            print('--- > YandexMarket api_id', api_id, '--- > client_id', client_id)  # --- TESTING ---
 
             # --- get all products from price_table for given yandex market api_id ---
             sql = "SELECT product_id, price, recommended_price, min_price_fbm " \
-                  "FROM price_table_test WHERE api_id=%s and product_id='101869907809'"
+                  "FROM price_table WHERE api_id=%s"
             products = run_sql_api_dict(sql, (api_id, ))
-            print('products from price_table', products)  # --- TESTING ---
             products = apply_filters(products, rule['filters'])
             products = apply_actions(products, rule['actions'])
-            print('products after actions', products)  # --- TESTING ---
             account = {'api_id': api_id, 'prices': products}
-
-            # test = input('OK')
 
             future = executor.submit(process_account_data, account)
             futures.append(future)
@@ -112,7 +107,6 @@ def main():
             run_sql_api(sql, (rule_id, ))
 
         response = [future.result() for future in futures]
-        print('final response', response)  # --- TESTING ---
         rule_ids = [item['id'] for item in price_rules]
         logger.info(f'Rules {rule_ids} have been processed. Response from marketplaces: {response}')
 
