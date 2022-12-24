@@ -162,54 +162,6 @@ class SupplierClientView(MethodView):
             return jsonify({'message': 'supplier does not exist'}), 404
 
 
-# --- MAPPINGS ---
-class MappingOffersView(MethodView):
-
-    def get(self, account_id):
-        products = MappingOffers.query.filter_by(account_id=account_id).all()
-        if products:
-            products = [
-                {
-                    'supplier_offer_id': product.supplier_offer_id,
-                    'mp_offer_id': product.mp_offer_id,
-                }
-                for product in products]
-            return jsonify({'account_id': account_id, 'products': products}), 200
-        else:
-            return jsonify({'message': 'no product listed for this account'}), 404
-
-    def post(self):
-        data = request.json
-        new_mapping = MappingOffers(
-            supplier_offer_id=data['supplier_offer_id'],
-            mp_offer_id=data['mp_offer_id'],
-            account_id=data['account_id']
-        )
-        db.session.add(new_mapping)
-        db.session.commit()
-        return jsonify({'message': 'mapping added'}), 201
-
-    def delete(self, mapping_id):
-        mapping = MappingOffers.query.filter_by(id=mapping_id).first()
-        if mapping:
-            db.session.delete(mapping)
-            db.session.commit()
-            return jsonify({'message': 'mapping deleted'}), 200
-        else:
-            return jsonify({'message': 'mapping does not exist'}), 404
-
-    def patch(self, mapping_id):
-        data = request.json
-        mapping = SupplierClient.query.filter_by(id=mapping_id).first()
-        if mapping:
-            for key, value in data.items():
-                setattr(mapping, key, value)
-            db.session.commit()
-            return jsonify({'message': 'mapping updated'}), 200
-        else:
-            return jsonify({'message': 'mapping does not exist'}), 404
-
-
 # --- SUPPLIER RULES ---
 class SupplierRulesView(MethodView):
 
@@ -275,12 +227,6 @@ app.add_url_rule('/supplier_client', view_func=SupplierClientView.as_view('view_
 app.add_url_rule('/supplier_client/<int:supplier_id>', view_func=SupplierClientView.as_view('add_supplier_client'), methods=['POST'])
 app.add_url_rule('/supplier_client/<int:supplier_id>', view_func=SupplierClientView.as_view('delete_supplier_client'), methods=['DELETE'])
 # app.add_url_rule('/supplier_client', view_func=SupplierClientView.as_view('update_supplier_client'), methods=['PATCH'])
-
-# mapping_fields routes
-app.add_url_rule('/mappings/<int:account_id>', view_func=MappingOffersView.as_view('view_mappings'), methods=['GET'])
-app.add_url_rule('/mappings', view_func=MappingOffersView.as_view('add_mapping'), methods=['POST'])
-app.add_url_rule('/mappings/<int:mapping_id>', view_func=MappingOffersView.as_view('delete_mapping'), methods=['DELETE'])
-app.add_url_rule('/mappings/<int:mapping_id>', view_func=MappingOffersView.as_view('update_mapping'), methods=['POST', 'PATCH'])
 
 # supplier rules routes
 app.add_url_rule('/suppliers/rules', view_func=SupplierRulesView.as_view('view_rules'), methods=['GET'])
